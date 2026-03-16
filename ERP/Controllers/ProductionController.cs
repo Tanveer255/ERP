@@ -19,7 +19,7 @@ public class ProductionController : ControllerBase
     }
 
     [HttpPost("create-order")]
-    public async Task<IActionResult> CreateOrder(CreateProductionOrderDto dto)
+    public async Task<IActionResult> CreateOrder([FromBody] CreateProductionOrderDto dto)
     {
         if (dto.ProductId == Guid.Empty)
             return BadRequest("ProductId is required.");
@@ -39,6 +39,8 @@ public class ProductionController : ControllerBase
 
         if (!bomComponents.Any())
             return BadRequest("No BOM defined for this product.");
+        // IMPORTANT: get BOM header ID
+        var bomId = bomComponents.First().Id;
 
         // Create production order
         var order = new ProductionOrder
@@ -46,6 +48,7 @@ public class ProductionController : ControllerBase
             Id = Guid.NewGuid(),
             OrderNumber = $"PO-{DateTime.UtcNow.Ticks}",
             ProductId = dto.ProductId,
+            BillOfMaterialId = bomId,
             PlannedQuantity = dto.Quantity,
             ProducedQuantity = 0,
             Status = "Planned",
