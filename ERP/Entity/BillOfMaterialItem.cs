@@ -13,7 +13,7 @@ public class BillOfMaterialItem
 
     // Component product
     public Guid ComponentId { get; set; }
-    public Product Component { get; set; }
+    public ProductEntity Component { get; set; }
 
     public decimal Quantity { get; set; }
 

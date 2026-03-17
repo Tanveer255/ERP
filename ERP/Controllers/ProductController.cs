@@ -1,6 +1,7 @@
 ﻿using ERP.Data;
 using ERP.Entity;
 using ERP.Entity.DTO;
+using ERP.Entity.Product;
 using ERP.Service;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -49,9 +50,8 @@ public class ProductController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateProduct(CreateProductDto dto)
     {
-        var product = new Product
+        var product = new ProductEntity
         {
-            Id = Guid.NewGuid(),
             Code = _helper.GenerateCode(),
             Name = dto.Name,
             Unit = dto.Unit,
@@ -63,7 +63,6 @@ public class ProductController : ControllerBase
         // 2. Create associated ProductStock with defaults
         var stock = new ProductStock
         {
-            Id = Guid.NewGuid(),
             ProductId = product.Id,
             QuantityAvailable = dto.Quantity,
             QuantityReserved = 0.0m,
@@ -79,6 +78,23 @@ public class ProductController : ControllerBase
             LastUpdated = DateTime.UtcNow
         };
         _context.productStocks.Add(stock);
+
+        var price = new Price
+        {
+           
+            ProductId = product.Id,
+            SalePrice = dto.SalePrice,
+            DiscountAmount = dto.DiscountAmount,
+            DiscountPercentage = dto.DiscountPercentage,
+            TaxPercentage = dto.TaxPercentage,
+            Currency = "USD",
+            CreatedAt = DateTime.UtcNow
+        };
+
+        // 👇 Call your function here
+        price.FinalPrice = _helper.GetFinalPrice(price);
+
+        _context.prices.Add(price);
 
         await _context.SaveChangesAsync();
 

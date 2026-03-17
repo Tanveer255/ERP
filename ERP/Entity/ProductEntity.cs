@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ERP.Entity;
 
-public class Product
+public class ProductEntity
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
@@ -17,10 +17,10 @@ public class Product
 
     // Optional: if this is a variant, it links to the main product
     public Guid? MainProductId { get; set; }
-    public Product MainProduct { get; set; }
+    public ProductEntity MainProduct { get; set; }
 
     // All variants of this product (empty if this is a variant itself)
-    public ICollection<Product> Variants { get; set; } = new List<Product>();
+    public ICollection<ProductEntity> Variants { get; set; } = new List<ProductEntity>();
 
     public ICollection<BillOfMaterial> BOMs { get; set; } = new List<BillOfMaterial>();
    

@@ -12,7 +12,7 @@ public class ProductionOrder
     public string OrderNumber { get; set; }
 
     public Guid ProductId { get; set; }      // Can be main or variant
-    public Product Product { get; set; }
+    public ProductEntity Product { get; set; }
 
     public Guid BillOfMaterialId { get; set; }          // BOM always points to main product
     public BillOfMaterial BillOfMaterials { get; set; }

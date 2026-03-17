@@ -10,7 +10,7 @@ public class ProductStock
     public Guid Id { get; set; }
 
     public Guid ProductId { get; set; }
-    public Product Product { get; set; }
+    public ProductEntity Product { get; set; }
 
     public decimal QuantityAvailable { get; set; } = 0.0m;  // Current stock available
     public decimal QuantityReserved { get; set; } = 0.0m;   // Reserved for production orders

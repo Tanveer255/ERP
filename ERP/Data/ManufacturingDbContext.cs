@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using ERP.Entity;
 using System.Collections.Generic;
+using ERP.Entity.Product;
 
 namespace ERP.Data;
 
@@ -11,7 +12,7 @@ public class ManufacturingDbContext : DbContext
     {
     }
 
-    public DbSet<Product> Products { get; set; }
+    public DbSet<ProductEntity> Products { get; set; }
     public DbSet<BillOfMaterial> BillOfMaterials { get; set; }
     public DbSet<BillOfMaterialItem> BillOfMaterialItems { get; set; }
     public DbSet<ProductionOrder> ProductionOrders { get; set; }
@@ -19,6 +20,7 @@ public class ManufacturingDbContext : DbContext
     public DbSet<MaterialConsumption> MaterialConsumptions { get; set; }
     public DbSet<FinishedGoodsReceipt> FinishedGoodsReceipts { get; set; }
     public DbSet<ProductStock> productStocks { get; set; }
+    public DbSet<ERP.Entity.Product.Price> prices { get; set; }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -54,7 +56,7 @@ public class ManufacturingDbContext : DbContext
             .OnDelete(DeleteBehavior.Restrict);
 
         // Optional: Configure variant relationship in Product
-        modelBuilder.Entity<Product>()
+        modelBuilder.Entity<ProductEntity>()
             .HasMany(p => p.Variants)
             .WithOne(v => v.MainProduct)
             .HasForeignKey(v => v.MainProductId)
