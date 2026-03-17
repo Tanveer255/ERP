@@ -1,7 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore;
-using ERP.Entity;
-using System.Collections.Generic;
+﻿using ERP.Entity;
 using ERP.Entity.Product;
+using Microsoft.EntityFrameworkCore;
+using System.Collections.Generic;
+using System.Text.Json;
 
 namespace ERP.Data;
 
@@ -19,9 +20,10 @@ public class ManufacturingDbContext : DbContext
     public DbSet<ProductionOperation> ProductionOperations { get; set; }
     public DbSet<MaterialConsumption> MaterialConsumptions { get; set; }
     public DbSet<FinishedGoodsReceipt> FinishedGoodsReceipts { get; set; }
-    public DbSet<ProductStock> productStocks { get; set; }
-    public DbSet<Price> prices { get; set; }
+    public DbSet<ProductStock> ProductStocks { get; set; }
+    public DbSet<Price> Prices { get; set; }
     public DbSet<StockTransaction> StockTransactions { get; set; }
+    public DbSet<UnitOfMeasure> UnitOfMeasures { get; set; }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -41,7 +43,8 @@ public class ManufacturingDbContext : DbContext
             entity.Property(p => p.Rack).HasDefaultValue("None");
             entity.Property(p => p.Shelf).HasDefaultValue("None");
         });
-
+        var unitOfmeasure = LoadUnitOfMeasureFromJson("Data/Seed/unitOfmeasure.json");
+        modelBuilder.Entity<UnitOfMeasure>().HasData(unitOfmeasure);
         // Finished product relationship
         modelBuilder.Entity<BillOfMaterial>()
             .HasOne(b => b.Product)           // navigation property
@@ -55,5 +58,11 @@ public class ManufacturingDbContext : DbContext
             .WithOne(v => v.MainProduct)
             .HasForeignKey(v => v.MainProductId)
             .OnDelete(DeleteBehavior.Restrict);
+
+    }
+    private List<UnitOfMeasure> LoadUnitOfMeasureFromJson(string filePath)
+    {
+        var json = File.ReadAllText(filePath);
+        return JsonSerializer.Deserialize<List<UnitOfMeasure>>(json) ?? new();
     }
 }

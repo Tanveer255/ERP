@@ -77,7 +77,7 @@ public class ProductController : ControllerBase
             Shelf = "None",
             LastUpdated = DateTime.UtcNow
         };
-        _context.productStocks.Add(stock);
+        _context.ProductStocks.Add(stock);
 
         var price = new Price
         {
@@ -94,7 +94,7 @@ public class ProductController : ControllerBase
         // 👇 Call your function here
         price.FinalPrice = _helper.GetFinalPrice(price);
 
-        _context.prices.Add(price);
+        _context.Prices.Add(price);
 
         await _context.SaveChangesAsync();
 

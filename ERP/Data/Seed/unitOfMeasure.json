@@ -1,0 +1,257 @@
+[
+  {
+    "Id": 1,
+    "Code": "AI",
+    "Name": "Assembled Item"
+  },
+  {
+    "Id": 2,
+    "Code": "L",
+    "Name": "Liter"
+  },
+  {
+    "Id": 3,
+    "Code": "cl",
+    "Name": "Centiliter"
+  },
+  {
+    "Id": 4,
+    "Code": "ml",
+    "Name": "Mililiter"
+  },
+  {
+    "Id": 5,
+    "Code": "dl",
+    "Name": "Deciliter"
+  },
+  {
+    "Id": 6,
+    "Code": "dcl",
+    "Name": "Decaliter"
+  },
+  {
+    "Id": 7,
+    "Code": "hcl",
+    "Name": "Hectoliter"
+  },
+  {
+    "Id": 8,
+    "Code": "kl",
+    "Name": "Kiloliter"
+  },
+  {
+    "Id": 9,
+    "Code": "pt",
+    "Name": "Pint"
+  },
+  {
+    "Id": 10,
+    "Code": "gll",
+    "Name": "Gallon (Metric)"
+  },
+  {
+    "Id": 11,
+    "Code": "glim",
+    "Name": "Gallon (Imperial)"
+  },
+  {
+    "Id": 12,
+    "Code": "mcg",
+    "Name": "Microgram"
+  },
+  {
+    "Id": 13,
+    "Code": "mg",
+    "Name": "Milligram"
+  },
+  {
+    "Id": 14,
+    "Code": "g",
+    "Name": "Gram"
+  },
+  {
+    "Id": 15,
+    "Code": "kg",
+    "Name": "Kilogram"
+  },
+  {
+    "Id": 16,
+    "Code": "lb",
+    "Name": "Pound"
+  },
+  {
+    "Id": 17,
+    "Code": "mt",
+    "Name": "Metric-Ton"
+  },
+  {
+    "Id": 18,
+    "Code": "mm",
+    "Name": "Millimeter"
+  },
+  {
+    "Id": 19,
+    "Code": "cm",
+    "Name": "Centimeter"
+  },
+  {
+    "Id": 20,
+    "Code": "dm",
+    "Name": "Decimeter"
+  },
+  {
+    "Id": 21,
+    "Code": "m",
+    "Name": "Meter"
+  },
+  {
+    "Id": 22,
+    "Code": "dcm",
+    "Name": "Decameter"
+  },
+  {
+    "Id": 23,
+    "Code": "hcm",
+    "Name": "Hectometer"
+  },
+  {
+    "Id": 24,
+    "Code": "km",
+    "Name": "Kilometer"
+  },
+  {
+    "Id": 25,
+    "Code": "in",
+    "Name": "Inch"
+  },
+  {
+    "Id": 26,
+    "Code": "ft",
+    "Name": "Foot"
+  },
+  {
+    "Id": 27,
+    "Code": "Yarn",
+    "Name": "Yarn"
+  },
+  {
+    "Id": 28,
+    "Code": "Thread",
+    "Name": "Thread"
+  },
+  {
+    "Id": 29,
+    "Code": "Yield",
+    "Name": "Yield"
+  },
+  {
+    "Id": 30,
+    "Code": "Mommes",
+    "Name": "Mommes"
+  },
+  {
+    "Id": 31,
+    "Code": "Quire",
+    "Name": "Quire"
+  },
+  {
+    "Id": 32,
+    "Code": "Bulk",
+    "Name": "Bulk"
+  },
+  {
+    "Id": 33,
+    "Code": "SI",
+    "Name": "Single Item"
+  },
+  {
+    "Id": 34,
+    "Code": "SU",
+    "Name": "Single Unit"
+  },
+  {
+    "Id": 35,
+    "Code": "t",
+    "Name": "Ton"
+  },
+  {
+    "Id": 36,
+    "Code": "m2",
+    "Name": "Square Meter"
+  },
+  {
+    "Id": 37,
+    "Code": "ha",
+    "Name": "Hectare"
+  },
+  {
+    "Id": 38,
+    "Code": "km2",
+    "Name": "Square Kilometer"
+  },
+  {
+    "Id": 39,
+    "Code": "cm3",
+    "Name": "Cubic Centimeter"
+  },
+  {
+    "Id": 40,
+    "Code": "m3",
+    "Name": "Cubic Meter"
+  },
+  {
+    "Id": 41,
+    "Code": "kg/m3",
+    "Name": "Kilogram Per Cubic Meter"
+  },
+  {
+    "Id": 42,
+    "Code": "each",
+    "Name": "Each"
+  },
+  {
+    "Id": 43,
+    "Code": "yard",
+    "Name": "Yard"
+  },
+  {
+    "Id": 44,
+    "Code": "piece",
+    "Name": "Piece"
+  },
+  {
+    "Id": 45,
+    "Code": "pair",
+    "Name": "Pair"
+  },
+  {
+    "Id": 46,
+    "Code": "oz",
+    "Name": "Ounce"
+  },
+  {
+    "Id": 47,
+    "Code": "floz",
+    "Name": "Fluid Ounce"
+  },
+  {
+    "Id": 48,
+    "Code": "ac",
+    "Name": "Acre"
+  },
+  {
+    "Id": 49,
+    "Code": "lot",
+    "Name": "Lot"
+  },
+  {
+    "Id": 50,
+    "Code": "sin",
+    "Name": "Square Inch"
+  },
+  {
+    "Id": 51,
+    "Code": "Other",
+    "Name": "Other"
+  }
+]

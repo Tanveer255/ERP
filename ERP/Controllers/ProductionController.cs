@@ -65,7 +65,7 @@ public class ProductionController : ControllerBase
             {
                 var requiredQty = item.Quantity * dto.Quantity;
 
-                var stock = await _context.productStocks
+                var stock = await _context.ProductStocks
                     .FirstOrDefaultAsync(s => s.ProductId == item.ComponentId);
 
                 if (stock == null)
@@ -126,7 +126,7 @@ public class ProductionController : ControllerBase
                 var requiredQty = item.Quantity * order.PlannedQuantity;
 
                 // Get stock for component
-                var stock = await _context.productStocks
+                var stock = await _context.ProductStocks
                     .FirstOrDefaultAsync(s => s.ProductId == item.ComponentId);
 
                 if (stock == null)
@@ -250,7 +250,7 @@ public class ProductionController : ControllerBase
             order.ActualFinishDate = DateTime.UtcNow;
 
             // Update finished product stock
-            var stock = await _context.productStocks
+            var stock = await _context.ProductStocks
                 .FirstOrDefaultAsync(s => s.ProductId == order.ProductId);
 
             if (stock == null)
