@@ -14,18 +14,11 @@ public class BillOfMaterial
     [Required]
     public Guid ProductId { get; set; }
 
-    [JsonIgnore] // prevents circular reference
+    [JsonIgnore]
     [ForeignKey(nameof(ProductId))]
     public ProductEntity Product { get; set; }
 
-    // Component product (child)
-    [Required]
-    public Guid ComponentId { get; set; }
-
-    [ForeignKey(nameof(ComponentId))]
-    public ProductEntity Component { get; set; }
-
-    [Required]
-    [Column(TypeName = "decimal(18,4)")]
-    public decimal Quantity { get; set; }
+    // Components for this product
+    [JsonIgnore]
+    public ICollection<BillOfMaterialItem> Items { get; set; } = new List<BillOfMaterialItem>();
 }

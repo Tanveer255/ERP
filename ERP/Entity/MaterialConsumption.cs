@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace ERP.Entity;
 
@@ -18,5 +19,6 @@ public class MaterialConsumption
 
     public DateTime ConsumptionDate { get; set; }
 
+    [JsonIgnore]
     public ProductionOrder Order { get; set; }
 }

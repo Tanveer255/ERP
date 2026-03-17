@@ -17,7 +17,6 @@ public class BOMController : ControllerBase
         _context = context;
     }
 
-    // POST: api/bom/create-bom
     [HttpPost("create-bom")]
     public async Task<IActionResult> CreateBOM(CreateBOMDto dto)
     {
@@ -32,7 +31,21 @@ public class BOMController : ControllerBase
         if (product == null)
             return NotFound("Finished product not found.");
 
-        var createdBoms = new List<BillOfMaterial>();
+        // Check for duplicates in request
+        var duplicateComponents = dto.Components
+            .GroupBy(c => c.ComponentId)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+
+        if (duplicateComponents.Any())
+            return BadRequest($"Duplicate components in request: {string.Join(", ", duplicateComponents)}");
+
+        // Check existing BOMs to prevent duplicate component entries
+        var existingComponentIds = await _context.BillOfMaterialItems
+            .Where(b => b.BillOfMaterial.ProductId == dto.ProductId)
+            .Select(b => b.ComponentId)
+            .ToListAsync();
 
         foreach (var component in dto.Components)
         {
@@ -42,33 +55,68 @@ public class BOMController : ControllerBase
             if (component.Quantity <= 0)
                 return BadRequest("Component quantity must be greater than zero.");
 
+            if (existingComponentIds.Contains(component.ComponentId))
+                return BadRequest($"Component {component.ComponentId} already exists in BOM.");
+
             // Check component exists
             var componentProduct = await _context.Products.FindAsync(component.ComponentId);
             if (componentProduct == null)
                 return NotFound($"Component product {component.ComponentId} not found.");
-
-            // Prevent duplicate component in same BOM
-            var exists = await _context.BillOfMaterials.AnyAsync(b =>
-                b.ProductId == dto.ProductId &&
-                b.ComponentId == component.ComponentId);
-
-            if (exists)
-                return BadRequest($"Component {component.ComponentId} already exists in BOM.");
-
-            var bom = new BillOfMaterial
-            {
-                Id = Guid.NewGuid(),
-                ProductId = product.Id,
-                ComponentId = component.ComponentId,
-                Quantity = component.Quantity
-            };
-
-            createdBoms.Add(bom);
-            _context.BillOfMaterials.Add(bom);
         }
 
-        await _context.SaveChangesAsync();
+        // Begin transaction
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            // Create BOM (parent)
+            var bom = new BillOfMaterial
+            {
+                ProductId = product.Id
+            };
+            _context.BillOfMaterials.Add(bom);
+            await _context.SaveChangesAsync(); // Save to get BOM Id
 
-        return Ok(createdBoms);
+            // Create BOM items (children)
+            var bomItems = new List<BillOfMaterialItem>();
+            foreach (var component in dto.Components)
+            {
+                var item = new BillOfMaterialItem
+                {
+                    BillOfMaterialId = bom.Id,
+                    ComponentId = component.ComponentId,
+                    Quantity = component.Quantity,
+                    Unit = component.Unit
+                };
+                _context.BillOfMaterialItems.Add(item);
+                bomItems.Add(item);
+            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            // Return created BOM with items
+            var result = new
+            {
+                BOM = new
+                {
+                    bom.Id,
+                    bom.ProductId,
+                    Components = bomItems.Select(i => new
+                    {
+                        i.Id,
+                        i.ComponentId,
+                        i.Quantity,
+                        i.Unit
+                    })
+                }
+            };
+
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(500, $"Error creating BOM: {ex.Message}");
+        }
     }
 }

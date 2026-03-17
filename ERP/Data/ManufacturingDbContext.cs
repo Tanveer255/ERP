@@ -20,7 +20,8 @@ public class ManufacturingDbContext : DbContext
     public DbSet<MaterialConsumption> MaterialConsumptions { get; set; }
     public DbSet<FinishedGoodsReceipt> FinishedGoodsReceipts { get; set; }
     public DbSet<ProductStock> productStocks { get; set; }
-    public DbSet<ERP.Entity.Product.Price> prices { get; set; }
+    public DbSet<Price> prices { get; set; }
+    public DbSet<StockTransaction> StockTransactions { get; set; }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -46,13 +47,6 @@ public class ManufacturingDbContext : DbContext
             .HasOne(b => b.Product)           // navigation property
             .WithMany(p => p.BOMs)            // main product has many BOMs
             .HasForeignKey(b => b.ProductId)  // foreign key
-            .OnDelete(DeleteBehavior.Restrict);
-
-        // Component relationship
-        modelBuilder.Entity<BillOfMaterial>()
-            .HasOne(b => b.Component)         // navigation property
-            .WithMany()                        // component may be in multiple BOMs
-            .HasForeignKey(b => b.ComponentId)
             .OnDelete(DeleteBehavior.Restrict);
 
         // Optional: Configure variant relationship in Product

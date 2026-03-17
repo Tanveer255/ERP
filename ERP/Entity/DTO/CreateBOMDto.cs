@@ -10,4 +10,5 @@ public class BOMComponentDto
 {
     public Guid ComponentId { get; set; }     // Component product
     public decimal Quantity { get; set; }     // Quantity required
+    public string Unit { get; set; }
 }

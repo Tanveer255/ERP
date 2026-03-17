@@ -1,6 +1,7 @@
 ﻿using ERP.Data;
 using ERP.Entity;
 using ERP.Entity.DTO;
+using ERP.Entity.Product;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -32,102 +33,160 @@ public class ProductionController : ControllerBase
         if (product == null)
             return NotFound("Product not found.");
 
-        // Get BOM components
-        var bomComponents = await _context.BillOfMaterials
-            .Where(b => b.ProductId == dto.ProductId)
-            .ToListAsync();
+        // Get BOM header for this product
+        var bom = await _context.BillOfMaterials
+            .Include(b => b.Items) // Include BOM items
+            .FirstOrDefaultAsync(b => b.ProductId == dto.ProductId);
 
-        if (!bomComponents.Any())
+        if (bom == null || bom.Items == null || !bom.Items.Any())
             return BadRequest("No BOM defined for this product.");
-        // IMPORTANT: get BOM header ID
-        var bomId = bomComponents.First().Id;
 
-        // Create production order
-        var order = new ProductionOrder
+        // Begin transaction for atomic operation
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
         {
-            Id = Guid.NewGuid(),
-            OrderNumber = $"PO-{DateTime.UtcNow.Ticks}",
-            ProductId = dto.ProductId,
-            BillOfMaterialId = bomId,
-            PlannedQuantity = dto.Quantity,
-            ProducedQuantity = 0,
-            Status = "Planned",
-            PlannedStartDate = dto.StartDate,
-            PlannedFinishDate = dto.FinishDate
-        };
+            // Create production order
+            var order = new ProductionOrder
+            {
+                OrderNumber = $"PO-{DateTime.UtcNow.Ticks}",
+                ProductId = dto.ProductId,
+                BillOfMaterialId = bom.Id,
+                PlannedQuantity = dto.Quantity,
+                ProducedQuantity = 0,
+                Status = "Planned",
+                PlannedStartDate = dto.StartDate,
+                PlannedFinishDate = dto.FinishDate
+            };
 
-        _context.ProductionOrders.Add(order);
+            _context.ProductionOrders.Add(order);
 
-        // Reserve required materials
-        foreach (var component in bomComponents)
-        {
-            var requiredQty = component.Quantity * dto.Quantity;
+            // Reserve stock for each BOM item
+            foreach (var item in bom.Items)
+            {
+                var requiredQty = item.Quantity * dto.Quantity;
 
-            var stock = await _context.productStocks
-                .FirstOrDefaultAsync(s => s.ProductId == component.ComponentId);
+                var stock = await _context.productStocks
+                    .FirstOrDefaultAsync(s => s.ProductId == item.ComponentId);
 
-            if (stock == null || stock.QuantityAvailable < requiredQty)
-                return BadRequest($"Not enough stock for component {component.ComponentId}");
+                if (stock == null)
+                    return BadRequest($"Stock record not found for component {item.ComponentId}");
 
-            stock.QuantityAvailable -= requiredQty;
-            stock.QuantityReserved += requiredQty;
-            stock.LastUpdated = DateTime.UtcNow;
+                if (stock.QuantityAvailable < requiredQty)
+                    return BadRequest($"Not enough stock for component {item.ComponentId}");
+
+                stock.QuantityAvailable -= requiredQty;
+                stock.QuantityReserved += requiredQty;
+                stock.LastUpdated = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return Ok(new
+            {
+                order.Id,
+                order.OrderNumber,
+                order.ProductId,
+                order.BillOfMaterialId,
+                order.PlannedQuantity,
+                order.Status,
+                order.PlannedStartDate,
+                order.PlannedFinishDate
+            });
         }
-
-        await _context.SaveChangesAsync();
-
-        return Ok(order);
-    }
-    [HttpPost("issue-material")]
-    public async Task<IActionResult> IssueMaterial(IssueMaterialDto dto)
-    {
-        if (dto.OrderId == Guid.Empty || dto.MaterialId == Guid.Empty)
-            return BadRequest("Invalid OrderId or MaterialId.");
-
-        if (dto.ConsumedQty <= 0)
-            return BadRequest("Consumed quantity must be greater than zero.");
-
-        // Check production order
-        var order = await _context.ProductionOrders.FindAsync(dto.OrderId);
-        if (order == null)
-            return NotFound("Production order not found.");
-
-        // Check material exists
-        var product = await _context.Products.FindAsync(dto.MaterialId);
-        if (product == null)
-            return NotFound("Material not found.");
-
-        // Get stock
-        var stock = await _context.productStocks
-            .FirstOrDefaultAsync(s => s.ProductId == dto.MaterialId);
-
-        if (stock == null)
-            return BadRequest("Stock record not found.");
-
-        if (stock.QuantityReserved < dto.ConsumedQty)
-            return BadRequest("Not enough reserved stock.");
-
-        // Move stock Reserved → InProduction
-        stock.QuantityReserved -= dto.ConsumedQty;
-        stock.QuantityInProduction += dto.ConsumedQty;
-        stock.LastUpdated = DateTime.UtcNow;
-
-        // Record consumption
-        var material = new MaterialConsumption
+        catch (Exception ex)
         {
-            Id = Guid.NewGuid(),
-            OrderId = dto.OrderId,
-            MaterialId = dto.MaterialId,
-            PlannedQuantity = dto.PlannedQty,
-            ConsumedQuantity = dto.ConsumedQty,
-            ConsumptionDate = DateTime.UtcNow
-        };
+            await transaction.RollbackAsync();
+            return StatusCode(500, $"Error creating production order: {ex.Message}");
+        }
+    }
 
-        _context.MaterialConsumptions.Add(material);
+    [HttpPost("issue-material")]
+    public async Task<IActionResult> IssueMaterialsForOrder(Guid orderId)
+    {
+        // Load order with BOM
+        var order = await _context.ProductionOrders
+            .Include(o => o.BillOfMaterials)
+                .ThenInclude(b => b.Items) // BOM items (components)
+            .FirstOrDefaultAsync(o => o.Id == orderId);
 
-        await _context.SaveChangesAsync();
+        if (order == null)
+            return NotFound("Order not found");
 
-        return Ok(material);
+        var bom = order.BillOfMaterials;
+
+        if (bom == null || bom.Items == null || !bom.Items.Any())
+            return BadRequest("No BOM defined for this product.");
+
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            foreach (var item in bom.Items)
+            {
+                var requiredQty = item.Quantity * order.PlannedQuantity;
+
+                // Get stock for component
+                var stock = await _context.productStocks
+                    .FirstOrDefaultAsync(s => s.ProductId == item.ComponentId);
+
+                if (stock == null)
+                    return BadRequest($"Stock record not found for material {item.ComponentId}");
+
+                if (stock.QuantityReserved < requiredQty)
+                    return BadRequest($"Not enough reserved stock for material {item.ComponentId}");
+
+                // Move stock: Reserved → InProduction
+                stock.QuantityReserved -= requiredQty;
+                stock.QuantityInProduction += requiredQty;
+                stock.LastUpdated = DateTime.UtcNow;
+
+                // Record consumption
+                var existingConsumption = await _context.MaterialConsumptions
+                    .FirstOrDefaultAsync(m => m.OrderId == orderId && m.MaterialId == item.ComponentId);
+
+                if (existingConsumption != null)
+                {
+                    existingConsumption.ConsumedQuantity += requiredQty;
+                    existingConsumption.PlannedQuantity = item.Quantity;
+                    existingConsumption.ConsumptionDate = DateTime.UtcNow;
+                }
+                else
+                {
+                    _context.MaterialConsumptions.Add(new MaterialConsumption
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderId = orderId,
+                        MaterialId = item.ComponentId,
+                        PlannedQuantity = item.Quantity,
+                        ConsumedQuantity = requiredQty,
+                        ConsumptionDate = DateTime.UtcNow
+                    });
+                }
+
+                // Record stock transaction
+                _context.StockTransactions.Add(new StockTransaction
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = item.ComponentId,
+                    Quantity = -requiredQty,
+                    Type = "ISSUE",
+                    ReferenceId = orderId,
+                    Date = DateTime.UtcNow,
+                    Notes = $"Issued for production order {order.OrderNumber}", // <-- Required
+                    PerformedBy = "SYSTEM" // <-- Required field, replace with current user if available
+                });
+            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return Ok("Materials issued successfully");
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(500, $"Error issuing materials: {ex.Message}");
+        }
     }
 
     [HttpPost("start-production")]
