@@ -58,7 +58,7 @@ public class BOMController : ControllerBase
             var bom = new BillOfMaterial
             {
                 Id = Guid.NewGuid(),
-                ProductId = dto.ProductId,
+                ProductId = product.Id,
                 ComponentId = component.ComponentId,
                 Quantity = component.Quantity
             };
