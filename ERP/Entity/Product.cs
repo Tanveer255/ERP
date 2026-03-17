@@ -23,4 +23,5 @@ public class Product
     public ICollection<Product> Variants { get; set; } = new List<Product>();
 
     public ICollection<BillOfMaterial> BOMs { get; set; } = new List<BillOfMaterial>();
+   
 }

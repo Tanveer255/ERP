@@ -1,6 +1,7 @@
 ﻿using ERP.Data;
 using ERP.Entity;
 using ERP.Entity.DTO;
+using ERP.Service;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,10 +13,12 @@ namespace ERP.Controllers;
 public class ProductController : ControllerBase
 {
     private readonly ManufacturingDbContext _context;
+    private readonly Helper _helper;
 
-    public ProductController(ManufacturingDbContext context)
+    public ProductController(ManufacturingDbContext context, Helper helper)
     {
         _context = context;
+        _helper = helper;
     }
 
     // GET: api/product
@@ -49,7 +52,7 @@ public class ProductController : ControllerBase
         var product = new Product
         {
             Id = Guid.NewGuid(),
-            Code = dto.Code,
+            Code = _helper.GenerateCode(),
             Name = dto.Name,
             Unit = dto.Unit,
             IsManufactured = dto.IsManufactured
@@ -62,7 +65,7 @@ public class ProductController : ControllerBase
         {
             Id = Guid.NewGuid(),
             ProductId = product.Id,
-            QuantityAvailable = 0.0m,
+            QuantityAvailable = dto.Quantity,
             QuantityReserved = 0.0m,
             QuantityInProduction = 0.0m,
             QuantityQuarantined = 0.0m,
@@ -113,4 +116,5 @@ public class ProductController : ControllerBase
 
         return NoContent();
     }
+   
 }
