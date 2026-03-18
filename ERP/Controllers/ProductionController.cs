@@ -228,9 +228,6 @@ public class ProductionController : ControllerBase
         if (dto.OrderId == Guid.Empty)
             return BadRequest("Invalid OrderId.");
 
-        if (dto.Quantity <= 0)
-            return BadRequest("Produced quantity must be greater than zero.");
-
         using var transaction = await _context.Database.BeginTransactionAsync();
 
         try
@@ -245,9 +242,19 @@ public class ProductionController : ControllerBase
                 return BadRequest("Production must be started before completion.");
 
             // Update order
-            order.ProducedQuantity = dto.Quantity;
+            order.ProducedQuantity = order.PlannedQuantity;
             order.Status = "Completed";
             order.ActualFinishDate = DateTime.UtcNow;
+
+            //component stock update
+            var BomItems = _context.BillOfMaterialItems.Where(a => a.BillOfMaterialId == order.BillOfMaterialId).ToList();
+            foreach (var item in BomItems)
+            {
+                var componentstock = await _context.ProductStocks
+                .FirstOrDefaultAsync(s => s.ProductId == item.ComponentId);
+                componentstock.QuantityInProduction -= item.Quantity * order.PlannedQuantity;
+                componentstock.LastUpdated = DateTime.UtcNow;
+            }
 
             // Update finished product stock
             var stock = await _context.ProductStocks
@@ -256,10 +263,9 @@ public class ProductionController : ControllerBase
             if (stock == null)
                 return BadRequest("Product stock record not found.");
 
-            stock.QuantityAvailable += dto.Quantity;
+            stock.QuantityAvailable += order.PlannedQuantity;
             stock.LastUpdated = DateTime.UtcNow;
 
-            await _context.SaveChangesAsync();
             // Create receipt
             var receipt = new FinishedGoodsReceipt
             {
@@ -270,6 +276,8 @@ public class ProductionController : ControllerBase
             };
 
             _context.FinishedGoodsReceipts.Add(receipt);
+
+            await _context.SaveChangesAsync();
 
             await transaction.CommitAsync();
 
