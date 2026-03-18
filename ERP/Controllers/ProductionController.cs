@@ -260,6 +260,16 @@ public class ProductionController : ControllerBase
             stock.LastUpdated = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+            // Create receipt
+            var receipt = new FinishedGoodsReceipt
+            {
+                OrderId = order.Id,
+                ProductId = order.ProductId,
+                Quantity = order.ProducedQuantity, // or whatever field you use
+                ReceiptDate = DateTime.UtcNow
+            };
+
+            _context.FinishedGoodsReceipts.Add(receipt);
 
             await transaction.CommitAsync();
 
