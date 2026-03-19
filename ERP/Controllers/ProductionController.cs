@@ -2,6 +2,7 @@
 using ERP.Entity;
 using ERP.Entity.DTO;
 using ERP.Entity.Product;
+using ERP.Enum;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -53,7 +54,7 @@ public class ProductionController : ControllerBase
                 BillOfMaterialId = bom.Id,
                 PlannedQuantity = dto.Quantity,
                 ProducedQuantity = 0,
-                Status = "Planned",
+                Status = nameof(ProductionStatus.Planned),
                 PlannedStartDate = dto.StartDate,
                 PlannedFinishDate = dto.FinishDate
             };
@@ -153,7 +154,7 @@ public class ProductionController : ControllerBase
         if (order == null)
             return NotFound("Order not found");
 
-        if (order.Status != "Planned")
+        if (order.Status != nameof(ProductionStatus.Planned))
             return BadRequest("Materials can only be issued for planned orders.");
 
         var bom = order.BillOfMaterials;
@@ -252,10 +253,10 @@ public class ProductionController : ControllerBase
         if (order == null)
             return NotFound("Production order not found.");
 
-        if (order.Status == "Completed")
+        if (order.Status == nameof(ProductionStatus.Completed))
             return BadRequest("Production already completed.");
 
-        if (order.Status == "InProgress")
+        if (order.Status == nameof(ProductionStatus.InProgress))
             return BadRequest("Production already started.");
 
         //if (order.Status != "Planned")
@@ -269,9 +270,9 @@ public class ProductionController : ControllerBase
 
         if (firstOperation != null)
         {
-            firstOperation.Status = "InProgress";
+            firstOperation.Status = nameof(ProductionStatus.InProgress);
         }
-        order.Status = "InProgress";
+        order.Status = nameof(ProductionStatus.InProgress);
         order.ActualStartDate = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
@@ -295,12 +296,12 @@ public class ProductionController : ControllerBase
         if (order == null)
             return NotFound("Order not found.");
 
-        if (order.Status != "InProgress")
+        if (order.Status != nameof(ProductionStatus.InProgress))
             return BadRequest("Production is not in progress.");
 
         //  Ensure only one operation is currently in progress
         var currentOperation = await _context.ProductionOperations
-            .Where(o => o.OrderId == orderId && o.Status == "InProgress")
+            .Where(o => o.OrderId == orderId && o.Status == nameof(ProductionStatus.InProgress))
             .OrderBy(o => o.SequenceNumber) // always pick the correct in-progress step
             .FirstOrDefaultAsync();
 
@@ -321,7 +322,7 @@ public class ProductionController : ControllerBase
 
         if (nextOperation != null)
         {
-            nextOperation.Status = "InProgress";
+            nextOperation.Status = nameof(ProductionStatus.InProgress);
             message = $"Operation '{currentOperation.OperationName}' completed. Next operation: '{nextOperation.OperationName}'.";
         }
         else
@@ -363,7 +364,7 @@ public class ProductionController : ControllerBase
             if (order == null)
                 return NotFound("Production order not found.");
 
-            if (order.Status != "InProgress")
+            if (order.Status != nameof(ProductionStatus.InProgress))
                 return BadRequest("Production must be started before completion.");
 
             //  Ensure all operations are completed
