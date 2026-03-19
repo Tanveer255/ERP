@@ -24,6 +24,8 @@ public class ProductStock
     public string Aisle { get; set; }
     public string Rack { get; set; }
     public string Shelf { get; set; }
+    [Timestamp]
+    public byte[] RowVersion { get; set; }
 
     public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
 }

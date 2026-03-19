@@ -59,6 +59,14 @@ public class ManufacturingDbContext : DbContext
             .HasForeignKey(v => v.MainProductId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        modelBuilder.Entity<ProductStock>()
+        .Property(p => p.RowVersion)
+        .IsRowVersion();
+
+        modelBuilder.Entity<ProductionOrder>()
+            .Property(p => p.RowVersion)
+            .IsRowVersion();
+
     }
     private List<UnitOfMeasure> LoadUnitOfMeasureFromJson(string filePath)
     {
