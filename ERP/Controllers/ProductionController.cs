@@ -298,7 +298,7 @@ public class ProductionController : ControllerBase
         if (order.Status != "InProgress")
             return BadRequest("Production is not in progress.");
 
-        // ✅ Ensure only one operation is currently in progress
+        //  Ensure only one operation is currently in progress
         var currentOperation = await _context.ProductionOperations
             .Where(o => o.OrderId == orderId && o.Status == "InProgress")
             .OrderBy(o => o.SequenceNumber) // always pick the correct in-progress step
@@ -307,11 +307,11 @@ public class ProductionController : ControllerBase
         if (currentOperation == null)
             return BadRequest("No active operation found.");
 
-        // ✅ Complete current operation
+        //  Complete current operation
         currentOperation.Status = "Completed";
-        //currentOperation.CompletedDate = DateTime.UtcNow; // optional
+        currentOperation.CompletedDate = DateTime.UtcNow; // optional
 
-        // ✅ Find the next pending operation using SequenceNumber
+        //  Find the next pending operation using SequenceNumber
         var nextOperation = await _context.ProductionOperations
             .Where(o => o.OrderId == orderId && o.Status == "Pending")
             .OrderBy(o => o.SequenceNumber)
@@ -329,7 +329,7 @@ public class ProductionController : ControllerBase
             message = $"All operations completed. Production ready for completion.";
         }
 
-        // ✅ Calculate progress
+        //  Calculate progress
         var totalOperations = await _context.ProductionOperations.CountAsync(o => o.OrderId == orderId);
         var completedOperations = await _context.ProductionOperations.CountAsync(o => o.OrderId == orderId && o.Status == "Completed");
         var progress = Math.Round((double)completedOperations / totalOperations * 100, 2);

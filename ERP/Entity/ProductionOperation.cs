@@ -16,6 +16,7 @@ public class ProductionOperation
     public int SequenceNumber { get; set; }
 
     public string Status { get; set; }
+    public DateTime CompletedDate { get; set; }
 
     public ProductionOrder Order { get; set; }
 }
