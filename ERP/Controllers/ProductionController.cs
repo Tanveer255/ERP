@@ -60,6 +60,7 @@ public class ProductionController : ControllerBase
             };
 
             _context.ProductionOrders.Add(order);
+            _context.SaveChanges(); // Save to get the generated OrderId
 
             // Reserve stock for each BOM item
             foreach (var item in bom.Items)
@@ -100,7 +101,7 @@ public class ProductionController : ControllerBase
                     OrderId = order.Id,
                     OperationName = "Cutting",
                     SequenceNumber = 1,
-                    Status = "Pending"
+                    Status = nameof(ProductionStatus.Pending)
                 },
                 new ProductionOperation
                 {
@@ -108,7 +109,7 @@ public class ProductionController : ControllerBase
                     OrderId = order.Id,
                     OperationName = "Assembly",
                     SequenceNumber = 2,
-                    Status = "Pending"
+                    Status = nameof(ProductionStatus.Pending)
                 },
                 new ProductionOperation
                 {
@@ -116,7 +117,7 @@ public class ProductionController : ControllerBase
                     OrderId = order.Id,
                     OperationName = "Packaging",
                     SequenceNumber = 3,
-                    Status = "Pending"
+                    Status = nameof(ProductionStatus.Pending)
                 }
              };
 
@@ -309,12 +310,12 @@ public class ProductionController : ControllerBase
             return BadRequest("No active operation found.");
 
         //  Complete current operation
-        currentOperation.Status = "Completed";
+        currentOperation.Status = nameof(ProductionStatus.Completed);
         currentOperation.CompletedDate = DateTime.UtcNow; // optional
 
         //  Find the next pending operation using SequenceNumber
         var nextOperation = await _context.ProductionOperations
-            .Where(o => o.OrderId == orderId && o.Status == "Pending")
+            .Where(o => o.OrderId == orderId && o.Status == nameof(ProductionStatus.Pending))
             .OrderBy(o => o.SequenceNumber)
             .FirstOrDefaultAsync();
 
@@ -332,7 +333,7 @@ public class ProductionController : ControllerBase
 
         //  Calculate progress
         var totalOperations = await _context.ProductionOperations.CountAsync(o => o.OrderId == orderId);
-        var completedOperations = await _context.ProductionOperations.CountAsync(o => o.OrderId == orderId && o.Status == "Completed");
+        var completedOperations = await _context.ProductionOperations.CountAsync(o => o.OrderId == orderId && o.Status == nameof(ProductionStatus.Completed));
         var progress = Math.Round((double)completedOperations / totalOperations * 100, 2);
 
         await _context.SaveChangesAsync();
@@ -369,7 +370,7 @@ public class ProductionController : ControllerBase
 
             //  Ensure all operations are completed
             var pendingOperations = await _context.ProductionOperations
-                .Where(o => o.OrderId == dto.OrderId && o.Status != "Completed")
+                .Where(o => o.OrderId == dto.OrderId && o.Status != nameof(ProductionStatus.Completed))
                 .AnyAsync();
 
             if (pendingOperations)
@@ -379,7 +380,7 @@ public class ProductionController : ControllerBase
 
             //  Update order
             order.ProducedQuantity = producedQty;
-            order.Status = "Completed";
+            order.Status = nameof(ProductionStatus.Completed);
             order.ActualFinishDate = DateTime.UtcNow;
 
             //  Component stock update (WIP → Consumed)

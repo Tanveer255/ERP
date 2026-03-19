@@ -51,6 +51,8 @@ public class ProductionOrder
     // Actual dates
     public DateTime? ActualStartDate { get; set; }
     public DateTime? ActualFinishDate { get; set; }
+    [Timestamp]
+    public byte[] RowVersion { get; set; }
 
     // Production operations (e.g., routing steps)
     [JsonIgnore]
