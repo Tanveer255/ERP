@@ -122,8 +122,16 @@ public class ProductionController : ControllerBase
              };
 
             _context.ProductionOperations.AddRange(operations);
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                await transaction.RollbackAsync();
+                return Conflict("Concurrency conflict...");
+            }
 
             return Ok(new
             {
@@ -225,8 +233,20 @@ public class ProductionController : ControllerBase
             // Update order status
             order.Status = "Ready";
 
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
+            try
+            {
+                await _context.SaveChangesAsync();   //  EF checks RowVersion here
+                await transaction.CommitAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                await transaction.RollbackAsync();
+
+                return Conflict(new
+                {
+                    Message = "Stock was modified by another user. Please retry."
+                });
+            }
 
             return Ok(new
             {
@@ -238,7 +258,7 @@ public class ProductionController : ControllerBase
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
-            return StatusCode(500, $"Error issuing materials: {ex.Message}");
+            return StatusCode(500, ex.Message);
         }
     }
 
@@ -449,8 +469,16 @@ public class ProductionController : ControllerBase
 
             _context.FinishedGoodsReceipts.Add(receipt);
 
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                await transaction.RollbackAsync();
+                return Conflict("Concurrency conflict...");
+            }
 
             return Ok(new
             {
@@ -460,10 +488,14 @@ public class ProductionController : ControllerBase
                 Status = order.Status
             });
         }
-        catch (Exception ex)
+        catch (DbUpdateConcurrencyException ex)
         {
             await transaction.RollbackAsync();
-            return StatusCode(500, $"Error completing production: {ex.Message}");
+
+            return Conflict(new
+            {
+                Message = "Concurrency conflict detected. The record was modified by another user. Please reload and try again."
+            });
         }
     }
 }
