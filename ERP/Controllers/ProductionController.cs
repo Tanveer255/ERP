@@ -370,9 +370,9 @@ public class ProductionController : ControllerBase
     }
 
     [HttpPost("complete-production")]
-    public async Task<IActionResult> CompleteProduction(CompleteProductionDto dto)
+    public async Task<IActionResult> CompleteProduction(Guid orderId)
     {
-        if (dto.OrderId == Guid.Empty)
+        if (orderId == Guid.Empty)
             return BadRequest("Invalid OrderId.");
 
         using var transaction = await _context.Database.BeginTransactionAsync();
@@ -380,7 +380,7 @@ public class ProductionController : ControllerBase
         try
         {
             var order = await _context.ProductionOrders
-                .FirstOrDefaultAsync(o => o.Id == dto.OrderId);
+                .FirstOrDefaultAsync(o => o.Id == orderId);
 
             if (order == null)
                 return NotFound("Production order not found.");
@@ -390,7 +390,7 @@ public class ProductionController : ControllerBase
 
             //  Ensure all operations are completed
             var pendingOperations = await _context.ProductionOperations
-                .Where(o => o.OrderId == dto.OrderId && o.Status != nameof(ProductionStatus.Completed))
+                .Where(o => o.OrderId == orderId && o.Status != nameof(ProductionStatus.Completed))
                 .AnyAsync();
 
             if (pendingOperations)
