@@ -1,5 +1,6 @@
 ﻿using ERP.Data;
 using ERP.Entity;
+using ERP.Entity.Document;
 using ERP.Entity.DTO;
 using ERP.Entity.Product;
 using ERP.Enum;
@@ -74,7 +75,55 @@ public class ProductionController : ControllerBase
                     return BadRequest($"Stock record not found for component {item.ComponentId}");
 
                 if (stock.QuantityAvailable < requiredQty)
-                    return BadRequest($"Not enough stock for component {item.ComponentId}");
+                {
+                    var availableStock = stock.QuantityAvailable;
+
+                    if (availableStock < requiredQty)
+                    {
+                        var shortageQty = requiredQty - availableStock;
+
+                        // 🔍 Find supplier
+                        var supplier = await _context.ProductSuppliers
+                            .Where(x => x.ProductId == item.ComponentId)
+                            .OrderByDescending(x => x.IsPreferred)
+                            .ThenBy(x => x.Price)
+                            .FirstOrDefaultAsync();
+
+                        if (supplier == null)
+                            return BadRequest($"No supplier found for component {item.ComponentId}");
+
+                        // Create Purchase Order
+                        var po = new PurchaseOrder
+                        {
+                            Id = Guid.NewGuid(),
+                            OrderNumber = $"PO-{DateTime.UtcNow.Ticks}",
+                            SupplierId = supplier.SupplierId,
+                            OrderDate = DateTime.UtcNow,
+                            ExpectedDate = DateTime.UtcNow.AddDays(supplier.LeadTimeInDays),
+                            Status = PurchaseOrderStatus.Draft,
+                            Items = new List<PurchaseOrderItem>()
+                        };
+
+                        po.Items.Add(new PurchaseOrderItem
+                        {
+                            Id = Guid.NewGuid(),
+                            ProductId = item.ComponentId,
+                            Quantity = shortageQty,
+                            UnitPrice = supplier.Price
+                        });
+
+                        _context.PurchaseOrders.Add(po);
+
+                        // Reserve only available stock
+                        stock.QuantityReserved += availableStock;
+                        stock.QuantityAvailable = 0;
+                    }
+                    else
+                    {
+                        stock.QuantityAvailable -= requiredQty;
+                        stock.QuantityReserved += requiredQty;
+                    }
+                }
 
                 stock.QuantityAvailable -= requiredQty;
                 stock.QuantityReserved += requiredQty;

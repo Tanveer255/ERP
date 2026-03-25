@@ -18,6 +18,7 @@ public class ProductEntity
     // Optional: if this is a variant, it links to the main product
     public Guid? MainProductId { get; set; }
     public ProductEntity MainProduct { get; set; }
+    public bool IsPurchasable { get; set; }
 
     // All variants of this product (empty if this is a variant itself)
     public ICollection<ProductEntity> Variants { get; set; } = new List<ProductEntity>();

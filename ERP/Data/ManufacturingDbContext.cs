@@ -1,5 +1,6 @@
 ﻿using ERP.Entity;
 using ERP.Entity.Contact;
+using ERP.Entity.Document;
 using ERP.Entity.Product;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
@@ -25,7 +26,11 @@ public class ManufacturingDbContext : DbContext
     public DbSet<Price> Prices { get; set; }
     public DbSet<StockTransaction> StockTransactions { get; set; }
     public DbSet<UnitOfMeasure> UnitOfMeasures { get; set; }
-    public DbSet<Supplier> Suppliers { get; set; }
+    public DbSet<Contact> Contact { get; set; }
+    public DbSet<PurchaseOrder> PurchaseOrders { get; set; }
+    public DbSet<PurchaseOrderItem> PurchaseOrderItems { get; set; }
+    public DbSet<ProductSupplier> ProductSuppliers { get; set; }
+    public DbSet<GoodsReceipt> GoodsReceipts { get; set; }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
