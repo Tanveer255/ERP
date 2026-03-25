@@ -21,7 +21,7 @@ public class ProductionController : ControllerBase
         _context = context;
     }
 
-    [HttpPost("create-order")]
+    [HttpPost("create-production-order")]
     public async Task<IActionResult> CreateOrder([FromBody] CreateProductionOrderDto dto)
     {
         if (dto.ProductId == Guid.Empty)
@@ -82,7 +82,7 @@ public class ProductionController : ControllerBase
                     {
                         var shortageQty = requiredQty - availableStock;
 
-                        // 🔍 Find supplier
+                        //  Find supplier
                         var supplier = await _context.ProductSuppliers
                             .Where(x => x.ProductId == item.ComponentId)
                             .OrderByDescending(x => x.IsPreferred)

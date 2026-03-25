@@ -36,6 +36,6 @@ public class Contact
     public DateTime? UpdatedAt { get; set; }
 
     // Navigation Properties
-    public ICollection<Contact> ProductSuppliers { get; set; }
+    public ICollection<ProductSupplier> ProductSuppliers { get; set; }
     public ICollection<PurchaseOrder> PurchaseOrders { get; set; }
 }
