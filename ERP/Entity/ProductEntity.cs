@@ -14,6 +14,7 @@ public class ProductEntity
     public string Unit { get; set; }
 
     public bool IsManufactured { get; set; }  // true for any product we manufacture
+    public decimal UnitCost { get; set; }
 
     // Optional: if this is a variant, it links to the main product
     public Guid? MainProductId { get; set; }
