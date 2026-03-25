@@ -76,6 +76,12 @@ public class ManufacturingDbContext : DbContext
             .Property(p => p.RowVersion)
             .IsRowVersion();
 
+        modelBuilder.Entity<Price>()
+        .HasOne(p => p.Product)
+        .WithMany(p => p.Prices)
+        .HasForeignKey(p => p.ProductId)
+        .OnDelete(DeleteBehavior.Cascade);
+
     }
     private List<UnitOfMeasure> LoadUnitOfMeasureFromJson(string filePath)
     {

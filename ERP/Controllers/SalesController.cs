@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ERP.Entity.DTO.Document;
 using Microsoft.EntityFrameworkCore;
+using ERP.Entity.Product;
 
 namespace ERP.Controllers;
 
@@ -30,6 +31,7 @@ public class SalesController : ControllerBase
 
         try
         {
+            // Create the sales order
             var order = new SalesOrder
             {
                 Id = Guid.NewGuid(),
@@ -45,24 +47,29 @@ public class SalesController : ControllerBase
 
             foreach (var item in dto.Items)
             {
-                var product = await _context.Products.FindAsync(item.ProductId);
+                // Fetch product with its prices
+                var product = await _context.Products
+                    .Include(p => p.Prices)
+                    .FirstOrDefaultAsync(p => p.Id == item.ProductId);
+
                 if (product == null)
                     return BadRequest($"Product {item.ProductId} not found");
 
                 var stock = await _context.ProductStocks
                     .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
 
-                var unitPrice = product.UnitCost; // or selling price later
+                // Get unit price (use the first price or apply logic for active price)
+                var unitPrice = product.Prices.FirstOrDefault()?.SalePrice ?? 0;
                 var totalPrice = unitPrice * item.Quantity;
 
                 totalAmount += totalPrice;
 
-                //  STOCK CHECK
+                // STOCK CHECK
                 if (stock == null || stock.QuantityAvailable < item.Quantity)
                 {
                     var shortage = item.Quantity - (stock?.QuantityAvailable ?? 0);
 
-                    //  Create Production Order automatically
+                    // Create Production Order automatically for shortage
                     var productionOrder = new ProductionOrder
                     {
                         Id = Guid.NewGuid(),
@@ -76,14 +83,49 @@ public class SalesController : ControllerBase
                     };
 
                     _context.ProductionOrders.Add(productionOrder);
+
+                    // If some stock exists, reserve what is available
+                    if (stock != null && stock.QuantityAvailable > 0)
+                    {
+                        var availableQty = stock.QuantityAvailable;
+                        stock.QuantityAvailable -= availableQty;
+                        stock.QuantityReserved += availableQty;
+
+                        // Add stock transaction for reserved quantity
+                        _context.StockTransactions.Add(new StockTransaction
+                        {
+                            Id = Guid.NewGuid(),
+                            ProductId = item.ProductId,
+                            Quantity = availableQty,
+                            Type = "RESERVE",
+                            ReferenceId = order.Id,
+                            Date = DateTime.UtcNow,
+                            PerformedBy = dto.CustomerName,
+                            Notes = $"Reserved {availableQty} units for Sales Order {order.OrderNumber}"
+                        });
+                    }
                 }
                 else
                 {
-                    // Reserve stock
+                    // Reserve full requested quantity
                     stock.QuantityAvailable -= item.Quantity;
                     stock.QuantityReserved += item.Quantity;
+
+                    // Add stock transaction for reserved quantity
+                    _context.StockTransactions.Add(new StockTransaction
+                    {
+                        Id = Guid.NewGuid(),
+                        ProductId = item.ProductId,
+                        Quantity = item.Quantity,
+                        Type = "RESERVE",
+                        ReferenceId = order.Id,
+                        Date = DateTime.UtcNow,
+                        PerformedBy = dto.CustomerName,
+                        Notes = $"Reserved {item.Quantity} units for Sales Order {order.OrderNumber}"
+                    });
                 }
 
+                // Add item to sales order
                 order.Items.Add(new SalesOrderItem
                 {
                     Id = Guid.NewGuid(),
@@ -94,8 +136,10 @@ public class SalesController : ControllerBase
                 });
             }
 
+            // Set total amount
             order.TotalAmount = totalAmount;
 
+            // Save the sales order
             _context.SalesOrders.Add(order);
 
             await _context.SaveChangesAsync();

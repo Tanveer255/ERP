@@ -413,6 +413,8 @@ namespace ERP.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ProductId");
+
                     b.ToTable("Prices");
                 });
 
@@ -480,6 +482,9 @@ namespace ERP.Migrations
                     b.Property<string>("Unit")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("UnitCost")
+                        .HasColumnType("decimal(18,2)");
 
                     b.HasKey("Id");
 
@@ -1180,6 +1185,17 @@ namespace ERP.Migrations
                     b.Navigation("Order");
                 });
 
+            modelBuilder.Entity("ERP.Entity.Product.Price", b =>
+                {
+                    b.HasOne("ERP.Entity.ProductEntity", "Product")
+                        .WithMany("Prices")
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Product");
+                });
+
             modelBuilder.Entity("ERP.Entity.ProductEntity", b =>
                 {
                     b.HasOne("ERP.Entity.ProductEntity", "MainProduct")
@@ -1256,6 +1272,8 @@ namespace ERP.Migrations
             modelBuilder.Entity("ERP.Entity.ProductEntity", b =>
                 {
                     b.Navigation("BOMs");
+
+                    b.Navigation("Prices");
 
                     b.Navigation("Variants");
                 });

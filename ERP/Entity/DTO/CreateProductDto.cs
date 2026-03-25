@@ -6,6 +6,7 @@ public class CreateProductDto
     public string Unit { get; set; }
     public decimal Quantity { get; set; }     
     public decimal SalePrice { get; set; }     
+    public decimal UnitCost { get; set; }     
     public decimal DiscountAmount { get; set; }     
     public decimal DiscountPercentage { get; set; }     
     public decimal TaxPercentage { get; set; }     

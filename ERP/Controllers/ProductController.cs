@@ -55,6 +55,7 @@ public class ProductController : ControllerBase
             Code = _helper.GenerateCode(),
             Name = dto.Name,
             Unit = dto.Unit,
+            UnitCost = dto.UnitCost,
             IsManufactured = dto.IsManufactured
         };
 

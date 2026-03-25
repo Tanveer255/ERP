@@ -7,6 +7,8 @@ public class Price
     // Product relation (Foreign Key)
     public Guid ProductId { get; set; }
 
+    public ProductEntity Product { get; set; } // navigation property
+
     // Cost & Selling
     public decimal CostPrice { get; set; }
     public decimal SalePrice { get; set; }

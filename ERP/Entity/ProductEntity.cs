@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using ERP.Entity.Product;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ERP.Entity;
@@ -25,5 +26,7 @@ public class ProductEntity
     public ICollection<ProductEntity> Variants { get; set; } = new List<ProductEntity>();
 
     public ICollection<BillOfMaterial> BOMs { get; set; } = new List<BillOfMaterial>();
-   
+    // Add this navigation property
+    public ICollection<Price> Prices { get; set; } = new List<Price>();
+
 }
