@@ -30,27 +30,24 @@ public class ProductionController : ControllerBase
         if (dto.Quantity <= 0)
             return BadRequest("Quantity must be greater than zero.");
 
-        // Check product exists
         var product = await _context.Products.FindAsync(dto.ProductId);
         if (product == null)
             return NotFound("Product not found.");
 
-        // Get BOM header for this product
         var bom = await _context.BillOfMaterials
-            .Include(b => b.Items) // Include BOM items
+            .Include(b => b.Items)
             .FirstOrDefaultAsync(b => b.ProductId == dto.ProductId);
 
-        if (bom == null || bom.Items == null || !bom.Items.Any())
+        if (bom == null || !bom.Items.Any())
             return BadRequest("No BOM defined for this product.");
 
-        // Begin transaction for atomic operation
         using var transaction = await _context.Database.BeginTransactionAsync();
+
         try
         {
-            // Create production order
             var order = new ProductionOrder
             {
-                OrderNumber = $"PO-{DateTime.UtcNow.Ticks}",
+                OrderNumber = $"PROD-{Guid.NewGuid().ToString().Substring(0, 8)}",
                 ProductId = dto.ProductId,
                 BillOfMaterialId = bom.Id,
                 PlannedQuantity = dto.Quantity,
@@ -61,9 +58,11 @@ public class ProductionController : ControllerBase
             };
 
             _context.ProductionOrders.Add(order);
-            _context.SaveChanges(); // Save to get the generated OrderId
+            await _context.SaveChangesAsync();
 
-            // Reserve stock for each BOM item
+            // GROUP PURCHASE ORDERS BY SUPPLIER
+            var supplierOrders = new Dictionary<Guid, PurchaseOrder>();
+
             foreach (var item in bom.Items)
             {
                 var requiredQty = item.Quantity * dto.Quantity;
@@ -72,62 +71,57 @@ public class ProductionController : ControllerBase
                     .FirstOrDefaultAsync(s => s.ProductId == item.ComponentId);
 
                 if (stock == null)
-                    return BadRequest($"Stock record not found for component {item.ComponentId}");
+                    throw new Exception($"Stock not found for component {item.ComponentId}");
 
-                if (stock.QuantityAvailable < requiredQty)
+                var availableStock = stock.QuantityAvailable;
+
+                if (availableStock >= requiredQty)
                 {
-                    var availableStock = stock.QuantityAvailable;
-
-                    if (availableStock < requiredQty)
+                    stock.QuantityAvailable -= requiredQty;
+                    stock.QuantityReserved += requiredQty;
+                }
+                else
+                {
+                    if (availableStock > 0)
                     {
-                        var shortageQty = requiredQty - availableStock;
+                        stock.QuantityReserved += availableStock;
+                        stock.QuantityAvailable = 0;
+                    }
 
-                        //  Find supplier
-                        var supplier = await _context.ProductSuppliers
-                            .Where(x => x.ProductId == item.ComponentId)
-                            .OrderByDescending(x => x.IsPreferred)
-                            .ThenBy(x => x.Price)
-                            .FirstOrDefaultAsync();
+                    var shortageQty = requiredQty - availableStock;
 
-                        if (supplier == null)
-                            return BadRequest($"No supplier found for component {item.ComponentId}");
+                    var supplier = await _context.ProductSuppliers
+                        .Where(x => x.ProductId == item.ComponentId)
+                        .OrderByDescending(x => x.IsPreferred)
+                        .ThenBy(x => x.Price)
+                        .FirstOrDefaultAsync();
 
-                        // Create Purchase Order
-                        var po = new PurchaseOrder
+                    if (supplier == null)
+                        throw new Exception($"No supplier for component {item.ComponentId}");
+
+                    // CHECK IF PO ALREADY EXISTS FOR SUPPLIER
+                    if (!supplierOrders.ContainsKey(supplier.SupplierId))
+                    {
+                        supplierOrders[supplier.SupplierId] = new PurchaseOrder
                         {
                             Id = Guid.NewGuid(),
-                            OrderNumber = $"PO-{DateTime.UtcNow.Ticks}",
+                            OrderNumber = $"PO-{Guid.NewGuid().ToString().Substring(0, 8)}",
                             SupplierId = supplier.SupplierId,
                             OrderDate = DateTime.UtcNow,
                             ExpectedDate = DateTime.UtcNow.AddDays(supplier.LeadTimeInDays),
                             Status = PurchaseOrderStatus.Draft,
                             Items = new List<PurchaseOrderItem>()
                         };
-
-                        po.Items.Add(new PurchaseOrderItem
-                        {
-                            Id = Guid.NewGuid(),
-                            ProductId = item.ComponentId,
-                            Quantity = shortageQty,
-                            UnitPrice = supplier.Price
-                        });
-
-                        _context.PurchaseOrders.Add(po);
-
-                        // Reserve only available stock
-                        stock.QuantityReserved += availableStock;
-                        stock.QuantityAvailable = 0;
                     }
-                    else
+
+                    supplierOrders[supplier.SupplierId].Items.Add(new PurchaseOrderItem
                     {
-                        stock.QuantityAvailable -= requiredQty;
-                        stock.QuantityReserved += requiredQty;
-                    }
+                        Id = Guid.NewGuid(),
+                        ProductId = item.ComponentId,
+                        Quantity = shortageQty,
+                        UnitPrice = supplier.Price
+                    });
                 }
-
-                stock.QuantityAvailable -= requiredQty;
-                stock.QuantityReserved += requiredQty;
-                stock.LastUpdated = DateTime.UtcNow;
 
                 _context.StockTransactions.Add(new StockTransaction
                 {
@@ -137,67 +131,64 @@ public class ProductionController : ControllerBase
                     Type = nameof(StockTransactionType.RESERVE),
                     ReferenceId = order.Id,
                     Date = DateTime.UtcNow,
-                    Notes = $"Reserved {requiredQty} units (Available → Reserved) for Production Order {order.OrderNumber}",
+                    Notes = $"Reserved {requiredQty} for Production Order {order.OrderNumber}",
                     PerformedBy = "SYSTEM"
                 });
             }
-            // Example: create operations (you can fetch from Routing table later)
-            var operations = new List<ProductionOperation>
+
+            // ADD ALL GROUPED PURCHASE ORDERS
+            foreach (var po in supplierOrders.Values)
             {
-                new ProductionOperation
-                {
-                    Id = Guid.NewGuid(),
-                    OrderId = order.Id,
-                    OperationName = "Cutting",
-                    SequenceNumber = 1,
-                    Status = nameof(ProductionStatus.Pending)
-                },
-                new ProductionOperation
-                {
-                    Id = Guid.NewGuid(),
-                    OrderId = order.Id,
-                    OperationName = "Assembly",
-                    SequenceNumber = 2,
-                    Status = nameof(ProductionStatus.Pending)
-                },
-                new ProductionOperation
-                {
-                    Id = Guid.NewGuid(),
-                    OrderId = order.Id,
-                    OperationName = "Packaging",
-                    SequenceNumber = 3,
-                    Status = nameof(ProductionStatus.Pending)
-                }
-             };
+                _context.PurchaseOrders.Add(po);
+            }
+
+            //  OPERATIONS
+            var operations = new List<ProductionOperation>
+        {
+            new ProductionOperation
+            {
+                Id = Guid.NewGuid(),
+                OrderId = order.Id,
+                OperationName = "Cutting",
+                SequenceNumber = 1,
+                Status = nameof(ProductionStatus.Pending)
+            },
+            new ProductionOperation
+            {
+                Id = Guid.NewGuid(),
+                OrderId = order.Id,
+                OperationName = "Assembly",
+                SequenceNumber = 2,
+                Status = nameof(ProductionStatus.Pending)
+            },
+            new ProductionOperation
+            {
+                Id = Guid.NewGuid(),
+                OrderId = order.Id,
+                OperationName = "Packaging",
+                SequenceNumber = 3,
+                Status = nameof(ProductionStatus.Pending)
+            }
+        };
 
             _context.ProductionOperations.AddRange(operations);
-            try
-            {
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                await transaction.RollbackAsync();
-                return Conflict("Concurrency conflict...");
-            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
 
             return Ok(new
             {
                 order.Id,
                 order.OrderNumber,
                 order.ProductId,
-                order.BillOfMaterialId,
                 order.PlannedQuantity,
-                order.Status,
-                order.PlannedStartDate,
-                order.PlannedFinishDate
+                order.Status
             });
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
-            return StatusCode(500, $"Error creating production order: {ex.Message}");
+            return StatusCode(500, ex.Message);
         }
     }
 
