@@ -25,13 +25,13 @@ public class SalesController : ControllerBase
     public async Task<IActionResult> CreateSalesOrder(CreateSalesOrderDto dto)
     {
         if (dto.Items == null || !dto.Items.Any())
-            return BadRequest("Order must have items.");
+            return BadRequest("Order must have at least one item.");
 
         using var transaction = await _context.Database.BeginTransactionAsync();
 
         try
         {
-            // Create the sales order
+            // 1️⃣ Create the sales order
             var order = new SalesOrder
             {
                 Id = Guid.NewGuid(),
@@ -45,36 +45,112 @@ public class SalesController : ControllerBase
 
             decimal totalAmount = 0;
 
+            // 2️⃣ Prepare PurchaseOrders grouped by Supplier
+            var purchaseOrders = new Dictionary<Guid, PurchaseOrder>();
+
             foreach (var item in dto.Items)
             {
-                // Fetch product with its prices
+                // Fetch product and stock
                 var product = await _context.Products
                     .Include(p => p.Prices)
                     .FirstOrDefaultAsync(p => p.Id == item.ProductId);
 
                 if (product == null)
-                    return BadRequest($"Product {item.ProductId} not found");
+                    return BadRequest($"Product {item.ProductId} not found.");
 
                 var stock = await _context.ProductStocks
                     .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
 
-                // Get unit price (use the first price or apply logic for active price)
                 var unitPrice = product.Prices.FirstOrDefault()?.SalePrice ?? 0;
                 var totalPrice = unitPrice * item.Quantity;
-
                 totalAmount += totalPrice;
 
-                // STOCK CHECK
+                // 3️⃣ Check stock
                 if (stock == null || stock.QuantityAvailable < item.Quantity)
                 {
                     var shortage = item.Quantity - (stock?.QuantityAvailable ?? 0);
 
-                    // Create Production Order automatically for shortage
+                    // 3a️⃣ Check if product has BOM (manufactured item)
+                    var bom = await _context.BillOfMaterials
+                        .Include(b => b.Items)
+                        .FirstOrDefaultAsync(b => b.ProductId == item.ProductId);
+
+                    if (bom == null)
+                    {
+                        // Purchased product: create PurchaseOrder
+                        var productSupplier = await _context.ProductSuppliers
+                            .Include(ps => ps.Supplier)
+                            .Where(ps => ps.ProductId == item.ProductId && ps.Supplier.IsActive)
+                            .OrderByDescending(ps => ps.IsPreferred)
+                            .FirstOrDefaultAsync();
+
+                        if (productSupplier == null)
+                            return BadRequest($"No active supplier found for Product {item.ProductId}");
+
+                        var supplierId = productSupplier.SupplierId;
+
+                        if (!purchaseOrders.ContainsKey(supplierId))
+                        {
+                            purchaseOrders[supplierId] = new PurchaseOrder
+                            {
+                                Id = Guid.NewGuid(),
+                                OrderNumber = $"AUTO-PO-{DateTime.UtcNow.Ticks}",
+                                SupplierId = supplierId,
+                                OrderDate = DateTime.UtcNow,
+                                ExpectedDate = DateTime.UtcNow.AddDays(productSupplier.LeadTimeInDays > 0
+                                    ? productSupplier.LeadTimeInDays
+                                    : 3),
+                                Status = PurchaseOrderStatus.Pending,
+                                Items = new List<PurchaseOrderItem>(),
+                                Notes = $"Auto-created for Sales Order {order.OrderNumber}"
+                            };
+                        }
+
+                        var po = purchaseOrders[supplierId];
+
+                        var poItem = new PurchaseOrderItem
+                        {
+                            Id = Guid.NewGuid(),
+                            ProductId = item.ProductId,
+                            Quantity = shortage,
+                            UnitPrice = productSupplier.Price,
+                            TotalPrice = productSupplier.Price * shortage
+                        };
+
+                        po.Items.Add(poItem);
+                        po.SubTotal += poItem.TotalPrice;
+                        po.TotalAmount += poItem.TotalPrice;
+
+                        // Reserve available stock if any
+                        if (stock != null && stock.QuantityAvailable > 0)
+                        {
+                            var reserveQty = stock.QuantityAvailable;
+                            stock.QuantityAvailable -= reserveQty;
+                            stock.QuantityReserved += reserveQty;
+
+                            _context.StockTransactions.Add(new StockTransaction
+                            {
+                                Id = Guid.NewGuid(),
+                                ProductId = item.ProductId,
+                                Quantity = reserveQty,
+                                Type = "RESERVE",
+                                ReferenceId = order.Id,
+                                Date = DateTime.UtcNow,
+                                PerformedBy = dto.CustomerName,
+                                Notes = $"Partial reserve for Sales Order {order.OrderNumber}"
+                            });
+                        }
+
+                        continue;
+                    }
+
+                    // 3b️⃣ Manufactured product: create ProductionOrder
                     var productionOrder = new ProductionOrder
                     {
                         Id = Guid.NewGuid(),
                         OrderNumber = $"AUTO-PO-{DateTime.UtcNow.Ticks}",
                         ProductId = item.ProductId,
+                        BillOfMaterialId = bom.Id,
                         PlannedQuantity = shortage,
                         ProducedQuantity = 0,
                         Status = nameof(ProductionStatus.Planned),
@@ -84,34 +160,121 @@ public class SalesController : ControllerBase
 
                     _context.ProductionOrders.Add(productionOrder);
 
-                    // If some stock exists, reserve what is available
+                    // 4️⃣ Check BOM materials
+                    foreach (var bomItem in bom.Items)
+                    {
+                        var requiredQty = bomItem.Quantity * shortage;
+
+                        var materialStock = await _context.ProductStocks
+                            .FirstOrDefaultAsync(s => s.ProductId == bomItem.ComponentId);
+
+                        var componentProduct = await _context.Products
+                            .Include(p => p.Prices)
+                            .FirstOrDefaultAsync(p => p.Id == bomItem.ComponentId);
+
+                        if (componentProduct == null)
+                            continue;
+
+                        var availableQty = materialStock?.QuantityAvailable ?? 0;
+
+                        if (availableQty < requiredQty)
+                        {
+                            var materialShortage = requiredQty - availableQty;
+
+                            // Create grouped PurchaseOrder for material
+                            var productSupplier = await _context.ProductSuppliers
+                                .Include(ps => ps.Supplier)
+                                .Where(ps => ps.ProductId == bomItem.ComponentId && ps.Supplier.IsActive)
+                                .OrderByDescending(ps => ps.IsPreferred)
+                                .FirstOrDefaultAsync();
+
+                            if (productSupplier != null)
+                            {
+                                var supplierId = productSupplier.SupplierId;
+
+                                if (!purchaseOrders.ContainsKey(supplierId))
+                                {
+                                    purchaseOrders[supplierId] = new PurchaseOrder
+                                    {
+                                        Id = Guid.NewGuid(),
+                                        OrderNumber = $"AUTO-PO-{DateTime.UtcNow.Ticks}",
+                                        SupplierId = supplierId,
+                                        OrderDate = DateTime.UtcNow,
+                                        ExpectedDate = DateTime.UtcNow.AddDays(productSupplier.LeadTimeInDays > 0
+                                            ? productSupplier.LeadTimeInDays
+                                            : 3),
+                                        Status = PurchaseOrderStatus.Pending,
+                                        Items = new List<PurchaseOrderItem>(),
+                                        Notes = $"Auto-created for Production {productionOrder.OrderNumber}"
+                                    };
+                                }
+
+                                var po = purchaseOrders[supplierId];
+
+                                var costPrice = componentProduct.Prices.FirstOrDefault()?.CostPrice ?? 0;
+
+                                var poItem = new PurchaseOrderItem
+                                {
+                                    Id = Guid.NewGuid(),
+                                    ProductId = bomItem.ComponentId,
+                                    Quantity = materialShortage,
+                                    UnitPrice = costPrice,
+                                    TotalPrice = costPrice * materialShortage
+                                };
+
+                                po.Items.Add(poItem);
+                                po.SubTotal += poItem.TotalPrice;
+                                po.TotalAmount += poItem.TotalPrice;
+                            }
+                        }
+
+                        // Reserve available material
+                        if (materialStock != null && materialStock.QuantityAvailable > 0)
+                        {
+                            var reserveQty = Math.Min(materialStock.QuantityAvailable, requiredQty);
+                            materialStock.QuantityAvailable -= reserveQty;
+                            materialStock.QuantityReserved += reserveQty;
+
+                            _context.StockTransactions.Add(new StockTransaction
+                            {
+                                Id = Guid.NewGuid(),
+                                ProductId = bomItem.ComponentId,
+                                Quantity = reserveQty,
+                                Type = "RESERVE",
+                                ReferenceId = productionOrder.Id,
+                                Date = DateTime.UtcNow,
+                                PerformedBy = dto.CustomerName,
+                                Notes = $"Reserved for Production {productionOrder.OrderNumber}"
+                            });
+                        }
+                    }
+
+                    // Reserve available finished goods
                     if (stock != null && stock.QuantityAvailable > 0)
                     {
-                        var availableQty = stock.QuantityAvailable;
-                        stock.QuantityAvailable -= availableQty;
-                        stock.QuantityReserved += availableQty;
+                        var reserveQty = stock.QuantityAvailable;
+                        stock.QuantityAvailable -= reserveQty;
+                        stock.QuantityReserved += reserveQty;
 
-                        // Add stock transaction for reserved quantity
                         _context.StockTransactions.Add(new StockTransaction
                         {
                             Id = Guid.NewGuid(),
                             ProductId = item.ProductId,
-                            Quantity = availableQty,
+                            Quantity = reserveQty,
                             Type = "RESERVE",
                             ReferenceId = order.Id,
                             Date = DateTime.UtcNow,
                             PerformedBy = dto.CustomerName,
-                            Notes = $"Reserved {availableQty} units for Sales Order {order.OrderNumber}"
+                            Notes = $"Partial reserve for Sales Order {order.OrderNumber}"
                         });
                     }
                 }
                 else
                 {
-                    // Reserve full requested quantity
+                    // 5️⃣ Full reserve if stock sufficient
                     stock.QuantityAvailable -= item.Quantity;
                     stock.QuantityReserved += item.Quantity;
 
-                    // Add stock transaction for reserved quantity
                     _context.StockTransactions.Add(new StockTransaction
                     {
                         Id = Guid.NewGuid(),
@@ -121,11 +284,11 @@ public class SalesController : ControllerBase
                         ReferenceId = order.Id,
                         Date = DateTime.UtcNow,
                         PerformedBy = dto.CustomerName,
-                        Notes = $"Reserved {item.Quantity} units for Sales Order {order.OrderNumber}"
+                        Notes = $"Reserved for Sales Order {order.OrderNumber}"
                     });
                 }
 
-                // Add item to sales order
+                // 6️⃣ Add sales order item
                 order.Items.Add(new SalesOrderItem
                 {
                     Id = Guid.NewGuid(),
@@ -136,16 +299,104 @@ public class SalesController : ControllerBase
                 });
             }
 
-            // Set total amount
+            // 7️⃣ Save PurchaseOrders
+            foreach (var po in purchaseOrders.Values)
+            {
+                _context.PurchaseOrders.Add(po);
+            }
+
             order.TotalAmount = totalAmount;
 
-            // Save the sales order
+            // 8️⃣ Save SalesOrder
             _context.SalesOrders.Add(order);
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
             return Ok(order);
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(500, ex.Message);
+        }
+    }
+
+    [HttpPost("update-sales-order-stock")]
+    public async Task<IActionResult> UpdateSalesOrderStock([FromQuery] Guid salesOrderId)
+    {
+        var order = await _context.SalesOrders
+            .Include(o => o.Items)
+            .ThenInclude(i => i.Product)
+            .FirstOrDefaultAsync(o => o.Id == salesOrderId);
+
+        if (order == null)
+            return NotFound("Sales order not found.");
+
+        using var transaction = await _context.Database.BeginTransactionAsync();
+
+        try
+        {
+            bool allItemsReserved = true;
+
+            foreach (var item in order.Items)
+            {
+                var stock = await _context.ProductStocks
+                    .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
+
+                if (stock == null || stock.QuantityAvailable <= 0)
+                {
+                    allItemsReserved = false;
+                    continue; // Nothing to reserve
+                }
+
+                // Determine how much we can reserve
+                var qtyToReserve = Math.Min(item.Quantity - item.Quantity, stock.QuantityAvailable);
+                if (qtyToReserve <= 0) continue;
+
+                stock.QuantityAvailable -= qtyToReserve;
+                stock.QuantityReserved += qtyToReserve;
+                item.Quantity += qtyToReserve;
+
+                _context.StockTransactions.Add(new StockTransaction
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = item.ProductId,
+                    Quantity = qtyToReserve,
+                    Type = "RESERVE",
+                    ReferenceId = order.Id,
+                    Date = DateTime.UtcNow,
+                    PerformedBy = "System",
+                    Notes = $"Reserved {qtyToReserve} units for Sales Order {order.OrderNumber} update"
+                });
+            }
+
+            // Update order status
+            if (allItemsReserved)
+                order.Status = SalesOrderStatus.Confirmed;
+            else
+                order.Status = SalesOrderStatus.PartiallyReserved;
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            var response = new SalesOrderResponseDto
+            {
+                Id = order.Id,
+                OrderNumber = order.OrderNumber,
+                OrderDate = order.OrderDate,
+                CustomerName = order.CustomerName,
+                CustomerEmail = order.CustomerEmail,
+                TotalAmount = order.TotalAmount,
+                Status = order.Status,
+                Items = order.Items.Select(i => new SalesOrderItemDto
+                {
+                    ProductId = i.ProductId,
+                    Quantity = i.Quantity,
+                }).ToList()
+            };
+
+            return Ok(response);
         }
         catch (Exception ex)
         {
