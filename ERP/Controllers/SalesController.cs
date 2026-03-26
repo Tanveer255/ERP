@@ -321,4 +321,87 @@ public class SalesController : ControllerBase
             return StatusCode(500, ex.Message);
         }
     }
+
+    [HttpPost("update-sales-order-stock")]
+    public async Task<IActionResult> UpdateSalesOrderStock([FromQuery] Guid salesOrderId)
+    {
+        var order = await _context.SalesOrders
+            .Include(o => o.Items)
+            .ThenInclude(i => i.Product)
+            .FirstOrDefaultAsync(o => o.Id == salesOrderId);
+
+        if (order == null)
+            return NotFound("Sales order not found.");
+
+        using var transaction = await _context.Database.BeginTransactionAsync();
+
+        try
+        {
+            bool allItemsReserved = true;
+
+            foreach (var item in order.Items)
+            {
+                var stock = await _context.ProductStocks
+                    .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
+
+                if (stock == null || stock.QuantityAvailable <= 0)
+                {
+                    allItemsReserved = false;
+                    continue; // Nothing to reserve
+                }
+
+                // Determine how much we can reserve
+                var qtyToReserve = Math.Min(item.Quantity - item.Quantity, stock.QuantityAvailable);
+                if (qtyToReserve <= 0) continue;
+
+                stock.QuantityAvailable -= qtyToReserve;
+                stock.QuantityReserved += qtyToReserve;
+                item.Quantity += qtyToReserve;
+
+                _context.StockTransactions.Add(new StockTransaction
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = item.ProductId,
+                    Quantity = qtyToReserve,
+                    Type = "RESERVE",
+                    ReferenceId = order.Id,
+                    Date = DateTime.UtcNow,
+                    PerformedBy = "System",
+                    Notes = $"Reserved {qtyToReserve} units for Sales Order {order.OrderNumber} update"
+                });
+            }
+
+            // Update order status
+            if (allItemsReserved)
+                order.Status = SalesOrderStatus.Confirmed;
+            else
+                order.Status = SalesOrderStatus.PartiallyReserved;
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            var response = new SalesOrderResponseDto
+            {
+                Id = order.Id,
+                OrderNumber = order.OrderNumber,
+                OrderDate = order.OrderDate,
+                CustomerName = order.CustomerName,
+                CustomerEmail = order.CustomerEmail,
+                TotalAmount = order.TotalAmount,
+                Status = order.Status,
+                Items = order.Items.Select(i => new SalesOrderItemDto
+                {
+                    ProductId = i.ProductId,
+                    Quantity = i.Quantity,
+                }).ToList()
+            };
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(500, ex.Message);
+        }
+    }
 }
