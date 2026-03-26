@@ -7,5 +7,6 @@ public enum PurchaseOrderStatus
     Confirmed,    // Supplier accepted
     PartiallyReceived,
     Received,
-    Cancelled
+    Cancelled,
+    Pending
 }
