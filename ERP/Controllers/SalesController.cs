@@ -318,7 +318,6 @@ public class SalesController : ControllerBase
                 if (stock == null || stock.QuantityAvailable <= 0)
                     continue;
 
-                //  FIXED calculation
                 var remainingQty = item.RequestedQuantity - item.ReservedQuantity;
 
                 if (remainingQty <= 0)
@@ -344,49 +343,52 @@ public class SalesController : ControllerBase
                 });
             }
 
-            //  FIXED STATUS LOGIC
+            // Update order status
             if (order.Items.All(i => i.ReservedQuantity == i.RequestedQuantity))
-            {
                 order.Status = SalesOrderStatus.Confirmed;
-            }
             else if (order.Items.Any(i => i.ReservedQuantity > 0))
-            {
                 order.Status = SalesOrderStatus.PartiallyReserved;
-            }
             else
-            {
                 order.Status = SalesOrderStatus.Pending;
-            }
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            //  UPDATED RESPONSE (NO EMPTY ITEMS, SHOW SHORTAGE)
-            var response = await _context.SalesOrders
-                .Where(o => o.Id == order.Id)
-                .Select(o => new SalesOrderResponseDto
-                {
-                    Id = o.Id,
-                    OrderNumber = o.OrderNumber,
-                    OrderDate = o.OrderDate,
-                    CustomerName = o.CustomerName,
-                    CustomerEmail = o.CustomerEmail,
-                    TotalAmount = o.TotalAmount,
-                    Status = o.Status,
+            // Fetch prices for all items in one query to avoid multiple DB hits
+            var productIds = order.Items.Select(i => i.ProductId).ToList();
+            var prices = await _context.Prices
+                .Where(p => productIds.Contains(p.ProductId))
+                .GroupBy(p => p.ProductId)
+                .Select(g => g.OrderByDescending(p => p.CreatedAt).FirstOrDefault())
+                .ToDictionaryAsync(p => p.ProductId, p => p.FinalPrice);
 
-                    Items = o.Items.Select(i => new SalesOrderItemResponseDto
+            // Prepare response
+            var response = new SalesOrderResponseDto
+            {
+                Id = order.Id,
+                OrderNumber = order.OrderNumber,
+                OrderDate = order.OrderDate,
+                CustomerName = order.CustomerName,
+                CustomerEmail = order.CustomerEmail,
+                Status = order.Status,
+                Items = order.Items.Select(i =>
+                {
+                    var price = i.UnitPrice;
+                    return new SalesOrderItemResponseDto
                     {
                         ProductId = i.ProductId,
                         ProductName = i.Product.Name,
-
                         RequestedQuantity = i.RequestedQuantity,
                         ReservedQuantity = i.ReservedQuantity,
+                        ShortQuantity = i.RequestedQuantity - i.ReservedQuantity,
+                        Price = price,
+                        Total = i.UnitPrice * i.RequestedQuantity
+                    };
+                }).ToList()
+            };
 
-                        //  KEY FIELD
-                        ShortQuantity = i.RequestedQuantity - i.ReservedQuantity
-                    }).ToList()
-                })
-                .FirstOrDefaultAsync();
+            // Calculate order total dynamically
+            response.TotalAmount = response.Items.Sum(x => x.Total);
 
             return Ok(response);
         }
