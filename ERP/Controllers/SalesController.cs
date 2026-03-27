@@ -356,11 +356,11 @@ public class SalesController : ControllerBase
 
             // Fetch prices for all items in one query to avoid multiple DB hits
             var productIds = order.Items.Select(i => i.ProductId).ToList();
-            var prices = await _context.Prices
-                .Where(p => productIds.Contains(p.ProductId))
-                .GroupBy(p => p.ProductId)
-                .Select(g => g.OrderByDescending(p => p.CreatedAt).FirstOrDefault())
-                .ToDictionaryAsync(p => p.ProductId, p => p.FinalPrice);
+            //var prices = await _context.Prices
+            //    .Where(p => productIds.Contains(p.ProductId))
+            //    .GroupBy(p => p.ProductId)
+            //    .Select(g => g.OrderByDescending(p => p.CreatedAt).FirstOrDefault())
+            //    .ToDictionaryAsync(p => p.ProductId, p => p.FinalPrice);
 
             // Prepare response
             var response = new SalesOrderResponseDto
@@ -373,7 +373,6 @@ public class SalesController : ControllerBase
                 Status = order.Status,
                 Items = order.Items.Select(i =>
                 {
-                    var price = i.UnitPrice;
                     return new SalesOrderItemResponseDto
                     {
                         ProductId = i.ProductId,
@@ -381,7 +380,7 @@ public class SalesController : ControllerBase
                         RequestedQuantity = i.RequestedQuantity,
                         ReservedQuantity = i.ReservedQuantity,
                         ShortQuantity = i.RequestedQuantity - i.ReservedQuantity,
-                        Price = price,
+                        Price = i.UnitPrice,
                         Total = i.UnitPrice * i.RequestedQuantity
                     };
                 }).ToList()
