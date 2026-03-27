@@ -4,6 +4,7 @@ public enum SalesOrderStatus
 {
     Draft,
     Confirmed,
+    Pending,
     Processing,
     Completed,
     Cancelled,

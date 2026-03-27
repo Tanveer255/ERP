@@ -145,7 +145,7 @@ public class SalesController : ControllerBase
                             Id = Guid.NewGuid(),
                             SalesOrderId = order.Id,
                             ProductId = item.ProductId,
-                            Quantity = item.Quantity,
+                            ReservedQuantity = item.Quantity,
                             UnitPrice = unitPrice,
                             TotalPrice = totalPrice
                         });
@@ -301,7 +301,7 @@ public class SalesController : ControllerBase
                 {
                     Id = Guid.NewGuid(),
                     ProductId = item.ProductId,
-                    Quantity = item.Quantity,
+                    ReservedQuantity = item.Quantity,
                     UnitPrice = unitPrice,
                     TotalPrice = totalPrice
                 });
@@ -354,16 +354,20 @@ public class SalesController : ControllerBase
                 if (stock == null || stock.QuantityAvailable <= 0)
                 {
                     allItemsReserved = false;
-                    continue; // Nothing to reserve
+                    continue;
                 }
 
-                // Determine how much we can reserve
-                var qtyToReserve = Math.Min(item.Quantity - item.Quantity, stock.QuantityAvailable);
-                if (qtyToReserve <= 0) continue;
+                var remainingQty = item.ReservedQuantity - item.ReservedQuantity;
+
+                if (remainingQty <= 0)
+                    continue;
+
+                var qtyToReserve = Math.Min(remainingQty, stock.QuantityAvailable);
 
                 stock.QuantityAvailable -= qtyToReserve;
                 stock.QuantityReserved += qtyToReserve;
-                item.Quantity += qtyToReserve;
+
+                item.ReservedQuantity += qtyToReserve; // ✅ FIXED
 
                 _context.StockTransactions.Add(new StockTransaction
                 {
@@ -374,15 +378,26 @@ public class SalesController : ControllerBase
                     ReferenceId = order.Id,
                     Date = DateTime.UtcNow,
                     PerformedBy = "System",
-                    Notes = $"Reserved {qtyToReserve} units for Sales Order {order.OrderNumber} update"
+                    Notes = $"Reserved {qtyToReserve} units for Sales Order {order.OrderNumber}"
                 });
+
+                if (item.ReservedQuantity < item.ReservedQuantity)
+                    allItemsReserved = false;
             }
 
             // Update order status
-            if (allItemsReserved)
-                order.Status = SalesOrderStatus.Confirmed;
-            else
+            if (order.Items.All(i => i.ReservedQuantity == i.ReservedQuantity))
+            {
+                order.Status = SalesOrderStatus.Confirmed; // Fully reserved
+            }
+            else if (order.Items.Any(i => i.ReservedQuantity > 0))
+            {
                 order.Status = SalesOrderStatus.PartiallyReserved;
+            }
+            else
+            {
+                order.Status = SalesOrderStatus.Pending;
+            }
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -399,7 +414,7 @@ public class SalesController : ControllerBase
                 Items = order.Items.Select(i => new SalesOrderItemDto
                 {
                     ProductId = i.ProductId,
-                    Quantity = i.Quantity,
+                    Quantity = i.ReservedQuantity,
                 }).ToList()
             };
 
