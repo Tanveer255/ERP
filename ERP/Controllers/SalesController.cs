@@ -67,7 +67,7 @@ public class SalesController : ControllerBase
 
                 var availableQty = stock?.QuantityAvailable ?? 0;
 
-                // ✅ FIX: correct reservation calculation
+                // correct reservation calculation
                 var reservedQty = Math.Min(item.Quantity, availableQty);
                 var shortage = item.Quantity - reservedQty;
 
@@ -99,7 +99,7 @@ public class SalesController : ControllerBase
 
                     if (bom == null)
                     {
-                        // 🔹 PURCHASE FLOW
+                        // PURCHASE FLOW
                         var productSupplier = await _context.ProductSuppliers
                             .Include(ps => ps.Supplier)
                             .Where(ps => ps.ProductId == item.ProductId && ps.Supplier.IsActive)
@@ -146,7 +146,7 @@ public class SalesController : ControllerBase
                     }
                     else
                     {
-                        // 🔹 PRODUCTION FLOW
+                        // PRODUCTION FLOW
                         var productionOrder = new ProductionOrder
                         {
                             Id = Guid.NewGuid(),
@@ -239,12 +239,12 @@ public class SalesController : ControllerBase
                     }
                 }
 
-                // 5️⃣ Add Sales Order Item (FINAL FIX)
+                // 5️⃣ Add Sales Order Item 
                 order.Items.Add(new SalesOrderItem
                 {
                     Id = Guid.NewGuid(),
                     ProductId = item.ProductId,
-                    ReservedQuantity = reservedQty, // ✅ CORRECT
+                    ReservedQuantity = reservedQty, 
                     UnitPrice = unitPrice,
                     TotalPrice = totalPrice
                 });
