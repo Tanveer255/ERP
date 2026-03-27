@@ -140,7 +140,15 @@ public class SalesController : ControllerBase
                                 Notes = $"Partial reserve for Sales Order {order.OrderNumber}"
                             });
                         }
-
+                        order.Items.Add(new SalesOrderItem
+                        {
+                            Id = Guid.NewGuid(),
+                            SalesOrderId = order.Id,
+                            ProductId = item.ProductId,
+                            Quantity = item.Quantity,
+                            UnitPrice = unitPrice,
+                            TotalPrice = totalPrice
+                        });
                         continue;
                     }
 
@@ -309,7 +317,6 @@ public class SalesController : ControllerBase
 
             // 8️⃣ Save SalesOrder
             await _context.SalesOrders.AddAsync(order);
-            await _context.SalesOrderItems.AddRangeAsync(order.Items);
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 

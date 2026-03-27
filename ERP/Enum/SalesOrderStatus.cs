@@ -7,5 +7,6 @@ public enum SalesOrderStatus
     Processing,
     Completed,
     Cancelled,
-    PartiallyReserved
+    PartiallyReserved,
+    FullyReserved
 }
