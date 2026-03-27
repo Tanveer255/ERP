@@ -308,8 +308,8 @@ public class SalesController : ControllerBase
             order.TotalAmount = totalAmount;
 
             // 8️⃣ Save SalesOrder
-            _context.SalesOrders.Add(order);
-
+            await _context.SalesOrders.AddAsync(order);
+            await _context.SalesOrderItems.AddRangeAsync(order.Items);
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
