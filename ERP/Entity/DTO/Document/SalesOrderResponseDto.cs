@@ -18,7 +18,9 @@ public class SalesOrderItemResponseDto
 {
     public Guid ProductId { get; set; }
     public string ProductName { get; set; }   // optional but useful
+    public decimal RequestedQuantity { get; set; }
     public decimal ReservedQuantity { get; set; }
+    public decimal ShortQuantity { get; set; }
     public decimal Price { get; set; }
     public decimal Total { get; set; }
 }

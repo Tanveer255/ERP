@@ -244,7 +244,8 @@ public class SalesController : ControllerBase
                 {
                     Id = Guid.NewGuid(),
                     ProductId = item.ProductId,
-                    ReservedQuantity = reservedQty, 
+                    RequestedQuantity = item.Quantity,
+                    ReservedQuantity = reservedQty,
                     UnitPrice = unitPrice,
                     TotalPrice = totalPrice
                 });
@@ -276,7 +277,7 @@ public class SalesController : ControllerBase
                      CustomerEmail = o.CustomerEmail,
                      TotalAmount = o.TotalAmount,
                      Status = o.Status,
-                
+
                      Items = o.Items.Select(i => new SalesOrderItemResponseDto
                      {
                          ProductId = i.ProductId,
@@ -309,20 +310,16 @@ public class SalesController : ControllerBase
 
         try
         {
-            bool allItemsReserved = true;
-
             foreach (var item in order.Items)
             {
                 var stock = await _context.ProductStocks
                     .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
 
                 if (stock == null || stock.QuantityAvailable <= 0)
-                {
-                    allItemsReserved = false;
                     continue;
-                }
 
-                var remainingQty = item.ReservedQuantity - item.ReservedQuantity;
+                //  FIXED calculation
+                var remainingQty = item.RequestedQuantity - item.ReservedQuantity;
 
                 if (remainingQty <= 0)
                     continue;
@@ -332,7 +329,7 @@ public class SalesController : ControllerBase
                 stock.QuantityAvailable -= qtyToReserve;
                 stock.QuantityReserved += qtyToReserve;
 
-                item.ReservedQuantity += qtyToReserve; // ✅ FIXED
+                item.ReservedQuantity += qtyToReserve;
 
                 _context.StockTransactions.Add(new StockTransaction
                 {
@@ -345,15 +342,12 @@ public class SalesController : ControllerBase
                     PerformedBy = "System",
                     Notes = $"Reserved {qtyToReserve} units for Sales Order {order.OrderNumber}"
                 });
-
-                if (item.ReservedQuantity < item.ReservedQuantity)
-                    allItemsReserved = false;
             }
 
-            // Update order status
-            if (order.Items.All(i => i.ReservedQuantity == i.ReservedQuantity))
+            //  FIXED STATUS LOGIC
+            if (order.Items.All(i => i.ReservedQuantity == i.RequestedQuantity))
             {
-                order.Status = SalesOrderStatus.Confirmed; // Fully reserved
+                order.Status = SalesOrderStatus.Confirmed;
             }
             else if (order.Items.Any(i => i.ReservedQuantity > 0))
             {
@@ -367,26 +361,32 @@ public class SalesController : ControllerBase
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
+            //  UPDATED RESPONSE (NO EMPTY ITEMS, SHOW SHORTAGE)
             var response = await _context.SalesOrders
-                 .Where(o => o.Id == order.Id)
-                 .Select(o => new SalesOrderResponseDto
-                 {
-                     Id = o.Id,
-                     OrderNumber = o.OrderNumber,
-                     OrderDate = o.OrderDate,
-                     CustomerName = o.CustomerName,
-                     CustomerEmail = o.CustomerEmail,
-                     TotalAmount = o.TotalAmount,
-                     Status = o.Status,
+                .Where(o => o.Id == order.Id)
+                .Select(o => new SalesOrderResponseDto
+                {
+                    Id = o.Id,
+                    OrderNumber = o.OrderNumber,
+                    OrderDate = o.OrderDate,
+                    CustomerName = o.CustomerName,
+                    CustomerEmail = o.CustomerEmail,
+                    TotalAmount = o.TotalAmount,
+                    Status = o.Status,
 
-                     Items = o.Items.Select(i => new SalesOrderItemResponseDto
-                     {
-                         ProductId = i.ProductId,
-                         ProductName = i.Product.Name, // if navigation exists
-                         ReservedQuantity = i.ReservedQuantity,
-                     }).ToList()
-                 })
-                 .FirstOrDefaultAsync();
+                    Items = o.Items.Select(i => new SalesOrderItemResponseDto
+                    {
+                        ProductId = i.ProductId,
+                        ProductName = i.Product.Name,
+
+                        RequestedQuantity = i.RequestedQuantity,
+                        ReservedQuantity = i.ReservedQuantity,
+
+                        //  KEY FIELD
+                        ShortQuantity = i.RequestedQuantity - i.ReservedQuantity
+                    }).ToList()
+                })
+                .FirstOrDefaultAsync();
 
             return Ok(response);
         }
