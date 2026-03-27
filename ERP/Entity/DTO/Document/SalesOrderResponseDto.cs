@@ -11,15 +11,14 @@ public class SalesOrderResponseDto
     public string CustomerEmail { get; set; }
     public decimal TotalAmount { get; set; }
     public SalesOrderStatus Status { get; set; }
-    public List<SalesOrderItemDto> Items { get; set; }
+    public List<SalesOrderItemResponseDto> Items { get; set; }
 }
 
-//public class SalesOrderItemDto
-//{
-//    public Guid Id { get; set; }
-//    public Guid ProductId { get; set; }
-//    public int ReservedQuantity { get; set; }
-//    public int QuantityReserved { get; set; }
-//    public decimal UnitPrice { get; set; }
-//    public decimal TotalPrice { get; set; }
-//}
+public class SalesOrderItemResponseDto
+{
+    public Guid ProductId { get; set; }
+    public string ProductName { get; set; }   // optional but useful
+    public decimal ReservedQuantity { get; set; }
+    public decimal Price { get; set; }
+    public decimal Total { get; set; }
+}

@@ -264,7 +264,28 @@ public class SalesController : ControllerBase
 
             await transaction.CommitAsync();
 
-            return Ok(order);
+
+            var response = await _context.SalesOrders
+                 .Where(o => o.Id == order.Id)
+                 .Select(o => new SalesOrderResponseDto
+                 {
+                     Id = o.Id,
+                     OrderNumber = o.OrderNumber,
+                     OrderDate = o.OrderDate,
+                     CustomerName = o.CustomerName,
+                     CustomerEmail = o.CustomerEmail,
+                     TotalAmount = o.TotalAmount,
+                     Status = o.Status,
+                
+                     Items = o.Items.Select(i => new SalesOrderItemResponseDto
+                     {
+                         ProductId = i.ProductId,
+                         ProductName = i.Product.Name, // if navigation exists
+                         ReservedQuantity = i.ReservedQuantity,
+                     }).ToList()
+                 })
+                 .FirstOrDefaultAsync();
+            return Ok(response);
         }
         catch (Exception ex)
         {
@@ -346,21 +367,26 @@ public class SalesController : ControllerBase
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            var response = new SalesOrderResponseDto
-            {
-                Id = order.Id,
-                OrderNumber = order.OrderNumber,
-                OrderDate = order.OrderDate,
-                CustomerName = order.CustomerName,
-                CustomerEmail = order.CustomerEmail,
-                TotalAmount = order.TotalAmount,
-                Status = order.Status,
-                Items = order.Items.Select(i => new SalesOrderItemDto
-                {
-                    ProductId = i.ProductId,
-                    Quantity = i.ReservedQuantity,
-                }).ToList()
-            };
+            var response = await _context.SalesOrders
+                 .Where(o => o.Id == order.Id)
+                 .Select(o => new SalesOrderResponseDto
+                 {
+                     Id = o.Id,
+                     OrderNumber = o.OrderNumber,
+                     OrderDate = o.OrderDate,
+                     CustomerName = o.CustomerName,
+                     CustomerEmail = o.CustomerEmail,
+                     TotalAmount = o.TotalAmount,
+                     Status = o.Status,
+
+                     Items = o.Items.Select(i => new SalesOrderItemResponseDto
+                     {
+                         ProductId = i.ProductId,
+                         ProductName = i.Product.Name, // if navigation exists
+                         ReservedQuantity = i.ReservedQuantity,
+                     }).ToList()
+                 })
+                 .FirstOrDefaultAsync();
 
             return Ok(response);
         }
