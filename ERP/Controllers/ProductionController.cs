@@ -4,7 +4,6 @@ using ERP.Entity.Document;
 using ERP.Entity.DTO;
 using ERP.Entity.Product;
 using ERP.Enum;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,6 +20,29 @@ public class ProductionController : ControllerBase
         _context = context;
     }
 
+    #region 🔁 Retry Helper
+    private async Task<bool> ExecuteWithRetryAsync(Func<Task> action, int maxRetry = 3)
+    {
+        int retry = maxRetry;
+
+        while (retry > 0)
+        {
+            try
+            {
+                await action();
+                return true;
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                retry--;
+                if (retry == 0) return false;
+            }
+        }
+        return false;
+    }
+    #endregion
+
+    #region 🏭 Create Production Order
     [HttpPost("create-production-order")]
     public async Task<IActionResult> CreateOrder([FromBody] CreateProductionOrderDto dto)
     {
@@ -39,161 +61,21 @@ public class ProductionController : ControllerBase
             .FirstOrDefaultAsync(b => b.ProductId == dto.ProductId);
 
         if (bom == null || !bom.Items.Any())
-            return BadRequest("No BOM defined for this product.");
+            return BadRequest("No BOM defined.");
 
         using var transaction = await _context.Database.BeginTransactionAsync();
 
         try
         {
-            var order = new ProductionOrder
-            {
-                OrderNumber = $"PROD-{Guid.NewGuid().ToString().Substring(0, 8)}",
-                ProductId = dto.ProductId,
-                BillOfMaterialId = bom.Id,
-                PlannedQuantity = dto.Quantity,
-                ProducedQuantity = 0,
-                Status = nameof(ProductionStatus.Planned),
-                PlannedStartDate = dto.StartDate,
-                PlannedFinishDate = dto.FinishDate
-            };
-
-            _context.ProductionOrders.Add(order);
-            await _context.SaveChangesAsync();
+            var order = await CreateProductionOrderAsync(dto, bom);
 
             var supplierOrders = new Dictionary<Guid, PurchaseOrder>();
 
-            foreach (var item in bom.Items)
-            {
-                var requiredQty = item.Quantity * dto.Quantity;
+            await ReserveStockAndCreatePOs(order, bom, supplierOrders);
 
-                bool saved = false;
-                int retry = 3;
+            _context.PurchaseOrders.AddRange(supplierOrders.Values);
 
-                while (!saved && retry > 0)
-                {
-                    var stock = await _context.ProductStocks
-                        .FirstOrDefaultAsync(s => s.ProductId == item.ComponentId);
-
-                    if (stock == null)
-                        throw new Exception($"Stock not found for component {item.ComponentId}");
-
-                    var availableStock = stock.QuantityAvailable;
-
-                    decimal qtyToReserve = 0;
-
-                    if (availableStock >= requiredQty)
-                    {
-                        qtyToReserve = requiredQty;
-                    }
-                    else
-                    {
-                        qtyToReserve = availableStock > 0 ? availableStock : 0;
-                    }
-
-                    stock.QuantityAvailable -= qtyToReserve;
-                    stock.QuantityReserved += qtyToReserve;
-
-                    var shortageQty = requiredQty - qtyToReserve;
-
-                    if (shortageQty > 0)
-                    {
-                        var supplier = await _context.ProductSuppliers
-                            .Where(x => x.ProductId == item.ComponentId)
-                            .OrderByDescending(x => x.IsPreferred)
-                            .ThenBy(x => x.Price)
-                            .FirstOrDefaultAsync();
-
-                        if (supplier == null)
-                            throw new Exception($"No supplier for component {item.ComponentId}");
-
-                        if (!supplierOrders.ContainsKey(supplier.SupplierId))
-                        {
-                            supplierOrders[supplier.SupplierId] = new PurchaseOrder
-                            {
-                                Id = Guid.NewGuid(),
-                                OrderNumber = $"PO-{Guid.NewGuid().ToString().Substring(0, 8)}",
-                                SupplierId = supplier.SupplierId,
-                                OrderDate = DateTime.UtcNow,
-                                ExpectedDate = DateTime.UtcNow.AddDays(supplier.LeadTimeInDays),
-                                Status = PurchaseOrderStatus.Draft,
-                                Items = new List<PurchaseOrderItem>()
-                            };
-                        }
-
-                        supplierOrders[supplier.SupplierId].Items.Add(new PurchaseOrderItem
-                        {
-                            Id = Guid.NewGuid(),
-                            ProductId = item.ComponentId,
-                            Quantity = shortageQty,
-                            UnitPrice = supplier.Price
-                        });
-                    }
-
-                    _context.StockTransactions.Add(new StockTransaction
-                    {
-                        Id = Guid.NewGuid(),
-                        ProductId = item.ComponentId,
-                        Quantity = qtyToReserve,
-                        Type = nameof(StockTransactionType.RESERVE),
-                        ReferenceId = order.Id,
-                        Date = DateTime.UtcNow,
-                        Notes = $"Reserved {qtyToReserve} for Production Order {order.OrderNumber}",
-                        PerformedBy = "SYSTEM"
-                    });
-
-                    try
-                    {
-                        await _context.SaveChangesAsync();
-                        saved = true;
-                    }
-                    catch (DbUpdateConcurrencyException)
-                    {
-                        retry--;
-                        if (retry == 0)
-                            return Conflict($"Stock for component {item.ComponentId} was updated by another user. Please retry.");
-
-                        // Reload stock and retry
-                        await _context.Entry(stock).ReloadAsync();
-                    }
-                }
-            }
-
-            // ADD ALL GROUPED PURCHASE ORDERS
-            foreach (var po in supplierOrders.Values)
-            {
-                _context.PurchaseOrders.Add(po);
-            }
-
-            // Add Production Operations
-            var operations = new List<ProductionOperation>
-        {
-            new ProductionOperation
-            {
-                Id = Guid.NewGuid(),
-                OrderId = order.Id,
-                OperationName = "Cutting",
-                SequenceNumber = 1,
-                Status = nameof(ProductionStatus.Pending)
-            },
-            new ProductionOperation
-            {
-                Id = Guid.NewGuid(),
-                OrderId = order.Id,
-                OperationName = "Assembly",
-                SequenceNumber = 2,
-                Status = nameof(ProductionStatus.Pending)
-            },
-            new ProductionOperation
-            {
-                Id = Guid.NewGuid(),
-                OrderId = order.Id,
-                OperationName = "Packaging",
-                SequenceNumber = 3,
-                Status = nameof(ProductionStatus.Pending)
-            }
-        };
-
-            _context.ProductionOperations.AddRange(operations);
+            AddDefaultOperations(order.Id);
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -202,8 +84,6 @@ public class ProductionController : ControllerBase
             {
                 order.Id,
                 order.OrderNumber,
-                order.ProductId,
-                order.PlannedQuantity,
                 order.Status
             });
         }
@@ -213,128 +93,54 @@ public class ProductionController : ControllerBase
             return StatusCode(500, ex.Message);
         }
     }
+    #endregion
 
+    #region 📦 Issue Materials
     [HttpPost("issue-material")]
-    public async Task<IActionResult> IssueMaterialsForOrder(Guid orderId)
+    public async Task<IActionResult> IssueMaterials(Guid orderId)
     {
         var order = await _context.ProductionOrders
             .Include(o => o.BillOfMaterials)
-                .ThenInclude(b => b.Items)
+            .ThenInclude(b => b.Items)
             .FirstOrDefaultAsync(o => o.Id == orderId);
 
-        if (order == null)
-            return NotFound("Order not found");
-
+        if (order == null) return NotFound("Order not found");
         if (order.Status != nameof(ProductionStatus.Planned))
-            return BadRequest("Materials can only be issued for planned orders.");
-
-        var bom = order.BillOfMaterials;
-
-        if (bom == null || bom.Items == null || !bom.Items.Any())
-            return BadRequest("No BOM defined for this product.");
+            return BadRequest("Order must be Planned");
 
         using var transaction = await _context.Database.BeginTransactionAsync();
 
         try
         {
-            foreach (var item in bom.Items)
+            foreach (var item in order.BillOfMaterials.Items)
             {
                 var requiredQty = item.Quantity * order.PlannedQuantity;
-                bool saved = false;
-                int retry = 3;
 
-                while (!saved && retry > 0)
+                var success = await ExecuteWithRetryAsync(async () =>
                 {
-                    var stock = await _context.ProductStocks
-                        .FirstOrDefaultAsync(s => s.ProductId == item.ComponentId);
-
-                    if (stock == null)
-                        return BadRequest($"Stock record not found for material {item.ComponentId}");
+                    var stock = await GetStock(item.ComponentId);
 
                     if (stock.QuantityReserved < requiredQty)
-                        return BadRequest($"Not enough reserved stock for material {item.ComponentId}");
+                        throw new Exception("Insufficient reserved stock");
 
-                    // Move stock: Reserved → InProduction
                     stock.QuantityReserved -= requiredQty;
                     stock.QuantityInProduction += requiredQty;
-                    stock.LastUpdated = DateTime.UtcNow;
 
-                    // Record consumption
-                    var existingConsumption = await _context.MaterialConsumptions
-                        .FirstOrDefaultAsync(m => m.OrderId == orderId && m.MaterialId == item.ComponentId);
+                    AddStockTransaction(order.Id, item.ComponentId, requiredQty, StockTransactionType.ISSUE);
 
-                    if (existingConsumption != null)
-                    {
-                        existingConsumption.ConsumedQuantity += requiredQty;
-                        existingConsumption.PlannedQuantity = item.Quantity;
-                        existingConsumption.ConsumptionDate = DateTime.UtcNow;
-                    }
-                    else
-                    {
-                        _context.MaterialConsumptions.Add(new MaterialConsumption
-                        {
-                            Id = Guid.NewGuid(),
-                            OrderId = orderId,
-                            MaterialId = item.ComponentId,
-                            PlannedQuantity = item.Quantity,
-                            ConsumedQuantity = requiredQty,
-                            ConsumptionDate = DateTime.UtcNow
-                        });
-                    }
+                    await _context.SaveChangesAsync();
+                });
 
-                    // Stock transaction
-                    _context.StockTransactions.Add(new StockTransaction
-                    {
-                        Id = Guid.NewGuid(),
-                        ProductId = item.ComponentId,
-                        Quantity = requiredQty,
-                        Type = nameof(StockTransactionType.ISSUE),
-                        ReferenceId = orderId,
-                        Date = DateTime.UtcNow,
-                        Notes = $"Issued {requiredQty} units from Reserved → InProduction for Order {order.OrderNumber}",
-                        PerformedBy = "SYSTEM"
-                    });
-
-                    try
-                    {
-                        await _context.SaveChangesAsync();
-                        saved = true;
-                    }
-                    catch (DbUpdateConcurrencyException)
-                    {
-                        retry--;
-                        if (retry == 0)
-                            return Conflict($"Stock for material {item.ComponentId} was updated by another user. Please retry.");
-
-                        // Reload stock for retry
-                        await _context.Entry(stock).ReloadAsync();
-                    }
-                }
+                if (!success)
+                    return Conflict("Concurrency conflict");
             }
 
-            // Update order status
             order.Status = "Ready";
 
-            try
-            {
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                await transaction.RollbackAsync();
-                return Conflict(new
-                {
-                    Message = "Stock was modified by another user. Please retry."
-                });
-            }
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
 
-            return Ok(new
-            {
-                Message = "Materials issued successfully",
-                OrderId = order.Id,
-                OrderStatus = order.Status
-            });
+            return Ok("Materials issued");
         }
         catch (Exception ex)
         {
@@ -342,285 +148,110 @@ public class ProductionController : ControllerBase
             return StatusCode(500, ex.Message);
         }
     }
+    #endregion
 
+    #region ▶️ Start Production
     [HttpPost("start-production")]
     public async Task<IActionResult> StartProduction(Guid orderId)
     {
-        if (orderId == Guid.Empty)
-            return BadRequest("Invalid OrderId.");
+        var order = await _context.ProductionOrders.FindAsync(orderId);
 
-        bool saved = false;
-        int retry = 3;
+        if (order == null) return NotFound();
+        if (order.Status != "Ready") return BadRequest("Not ready");
 
-        while (!saved && retry > 0)
+        var firstOp = await _context.ProductionOperations
+            .Where(x => x.OrderId == orderId)
+            .OrderBy(x => x.SequenceNumber)
+            .FirstOrDefaultAsync();
+
+        var success = await ExecuteWithRetryAsync(async () =>
         {
-            var order = await _context.ProductionOrders
-                .FirstOrDefaultAsync(o => o.Id == orderId);
-
-            if (order == null)
-                return NotFound("Production order not found.");
-
-            if (order.Status == nameof(ProductionStatus.Completed))
-                return BadRequest("Production already completed.");
-
-            if (order.Status == nameof(ProductionStatus.InProgress))
-                return BadRequest("Production already started.");
-
-            if (order.Status != "Ready")
-                return BadRequest("Materials must be issued before starting production.");
-
-            var firstOperation = await _context.ProductionOperations
-                .Where(o => o.OrderId == orderId)
-                .OrderBy(o => o.SequenceNumber)
-                .FirstOrDefaultAsync();
-
-            if (firstOperation != null)
-            {
-                firstOperation.Status = nameof(ProductionStatus.InProgress);
-            }
-
             order.Status = nameof(ProductionStatus.InProgress);
             order.ActualStartDate = DateTime.UtcNow;
 
-            try
-            {
-                await _context.SaveChangesAsync();
-                saved = true;
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                retry--;
-                if (retry == 0)
-                    return Conflict(new
-                    {
-                        Message = "Production order was updated by another user. Please reload and retry."
-                    });
+            if (firstOp != null)
+                firstOp.Status = nameof(ProductionStatus.InProgress);
 
-                // Reload the entities for retry
-                if (firstOperation != null)
-                    await _context.Entry(firstOperation).ReloadAsync();
-
-                await _context.Entry(order).ReloadAsync();
-            }
-        }
-
-        return Ok(new
-        {
-            Message = "Production started successfully.",
-            OrderId = orderId,
-            Status = nameof(ProductionStatus.InProgress)
+            await _context.SaveChangesAsync();
         });
-    }
 
+        if (!success)
+            return Conflict("Concurrency conflict");
+
+        return Ok("Production started");
+    }
+    #endregion
+
+    #region 🔄 Advance Production
     [HttpPost("advance-production")]
     public async Task<IActionResult> AdvanceProduction(Guid orderId)
     {
-        if (orderId == Guid.Empty)
-            return BadRequest("Invalid OrderId.");
+        var currentOp = await _context.ProductionOperations
+            .Where(x => x.OrderId == orderId && x.Status == nameof(ProductionStatus.InProgress))
+            .OrderBy(x => x.SequenceNumber)
+            .FirstOrDefaultAsync();
 
-        bool saved = false;
-        int retry = 3;
+        if (currentOp == null) return BadRequest("No active operation");
 
-        // Declare variables outside the loop
-        string message = string.Empty;
-        ProductionOperation currentOperation = null;
-        ProductionOperation nextOperation = null;
+        currentOp.Status = nameof(ProductionStatus.Completed);
 
-        while (!saved && retry > 0)
-        {
-            var order = await _context.ProductionOrders
-                .FirstOrDefaultAsync(o => o.Id == orderId);
+        var nextOp = await _context.ProductionOperations
+            .Where(x => x.OrderId == orderId && x.Status == nameof(ProductionStatus.Pending))
+            .OrderBy(x => x.SequenceNumber)
+            .FirstOrDefaultAsync();
 
-            if (order == null)
-                return NotFound("Order not found.");
+        if (nextOp != null)
+            nextOp.Status = nameof(ProductionStatus.InProgress);
 
-            if (order.Status != nameof(ProductionStatus.InProgress))
-                return BadRequest("Production is not in progress.");
-
-            // Ensure only one operation is currently in progress
-            currentOperation = await _context.ProductionOperations
-                .Where(o => o.OrderId == orderId && o.Status == nameof(ProductionStatus.InProgress))
-                .OrderBy(o => o.SequenceNumber)
-                .FirstOrDefaultAsync();
-
-            if (currentOperation == null)
-                return BadRequest("No active operation found.");
-
-            // Complete current operation
-            currentOperation.Status = nameof(ProductionStatus.Completed);
-            currentOperation.CompletedDate = DateTime.UtcNow;
-
-            // Find the next pending operation
-            nextOperation = await _context.ProductionOperations
-                .Where(o => o.OrderId == orderId && o.Status == nameof(ProductionStatus.Pending))
-                .OrderBy(o => o.SequenceNumber)
-                .FirstOrDefaultAsync();
-
-            if (nextOperation != null)
-            {
-                nextOperation.Status = nameof(ProductionStatus.InProgress);
-                message = $"Operation '{currentOperation.OperationName}' completed. Next operation: '{nextOperation.OperationName}'.";
-            }
-            else
-            {
-                message = "All operations completed. Production ready for completion.";
-            }
-
-            try
-            {
-                await _context.SaveChangesAsync();
-                saved = true;
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                retry--;
-                if (retry == 0)
-                    return Conflict(new
-                    {
-                        Message = "Production operation was updated by another user. Please reload and retry."
-                    });
-
-                // Reload entities for retry
-                await _context.Entry(order).ReloadAsync();
-                await _context.Entry(currentOperation).ReloadAsync();
-                if (nextOperation != null)
-                    await _context.Entry(nextOperation).ReloadAsync();
-            }
-        }
-
-        // Return response using variables declared outside the loop
-        var totalOperations = await _context.ProductionOperations.CountAsync(o => o.OrderId == orderId);
-        var completedOperations = await _context.ProductionOperations.CountAsync(o => o.OrderId == orderId && o.Status == nameof(ProductionStatus.Completed));
-        var progress = Math.Round((double)completedOperations / totalOperations * 100, 2);
+        await _context.SaveChangesAsync();
 
         return Ok(new
         {
-            Message = message,
-            CurrentOperation = currentOperation.OperationName,
-            NextOperation = nextOperation?.OperationName,
-            CompletedOperations = completedOperations,
-            TotalOperations = totalOperations,
-            ProgressPercent = progress
+            Current = currentOp.OperationName,
+            Next = nextOp?.OperationName
         });
     }
+    #endregion
 
+    #region ✅ Complete Production
     [HttpPost("complete-production")]
     public async Task<IActionResult> CompleteProduction(Guid orderId)
     {
-        if (orderId == Guid.Empty)
-            return BadRequest("Invalid OrderId.");
-
         using var transaction = await _context.Database.BeginTransactionAsync();
 
         try
         {
-            var order = await _context.ProductionOrders
-                .FirstOrDefaultAsync(o => o.Id == orderId);
+            var order = await _context.ProductionOrders.FindAsync(orderId);
 
-            if (order == null)
-                return NotFound("Production order not found.");
+            if (order == null) return NotFound();
 
-            if (order.Status != nameof(ProductionStatus.InProgress))
-                return BadRequest("Production must be started before completion.");
-
-            // Ensure all operations are completed
-            var pendingOperations = await _context.ProductionOperations
-                .Where(o => o.OrderId == orderId && o.Status != nameof(ProductionStatus.Completed))
-                .AnyAsync();
-
-            if (pendingOperations)
-                return BadRequest("All operations must be completed first.");
-
-            var producedQty = order.PlannedQuantity;
-
-            // Component stock update (WIP → Consumed)
             var bomItems = await _context.BillOfMaterialItems
-                .Where(a => a.BillOfMaterialId == order.BillOfMaterialId)
+                .Where(x => x.BillOfMaterialId == order.BillOfMaterialId)
                 .ToListAsync();
 
             foreach (var item in bomItems)
             {
-                var requiredQty = item.Quantity * producedQty;
+                var stock = await GetStock(item.ComponentId);
 
-                var componentStock = await _context.ProductStocks
-                    .FirstOrDefaultAsync(s => s.ProductId == item.ComponentId);
+                var qty = item.Quantity * order.PlannedQuantity;
 
-                if (componentStock == null)
-                    return BadRequest($"Stock not found for component {item.ComponentId}");
+                stock.QuantityInProduction -= qty;
 
-                componentStock.QuantityInProduction -= requiredQty;
-                componentStock.LastUpdated = DateTime.UtcNow;
-
-                _context.StockTransactions.Add(new StockTransaction
-                {
-                    Id = Guid.NewGuid(),
-                    ProductId = item.ComponentId,
-                    Quantity = requiredQty,
-                    Type = nameof(StockTransactionType.CONSUME),
-                    ReferenceId = order.Id,
-                    Date = DateTime.UtcNow,
-                    Notes = $"Consumed {requiredQty} units in production for Order {order.OrderNumber}",
-                    PerformedBy = "SYSTEM"
-                });
+                AddStockTransaction(order.Id, item.ComponentId, qty, StockTransactionType.CONSUME);
             }
 
-            // Finished goods stock update
-            var finishedStock = await _context.ProductStocks
-                .FirstOrDefaultAsync(s => s.ProductId == order.ProductId);
+            var finishedStock = await GetStock(order.ProductId);
+            finishedStock.QuantityAvailable += order.PlannedQuantity;
 
-            if (finishedStock == null)
-                return BadRequest("Product stock record not found.");
+            AddStockTransaction(order.Id, order.ProductId, order.PlannedQuantity, StockTransactionType.RECEIPT);
 
-            finishedStock.QuantityAvailable += producedQty;
-            finishedStock.LastUpdated = DateTime.UtcNow;
-
-            _context.StockTransactions.Add(new StockTransaction
-            {
-                Id = Guid.NewGuid(),
-                ProductId = order.ProductId,
-                Quantity = producedQty,
-                Type = nameof(StockTransactionType.RECEIPT),
-                ReferenceId = order.Id,
-                Date = DateTime.UtcNow,
-                Notes = $"Received {producedQty} units from production Order {order.OrderNumber}",
-                PerformedBy = "SYSTEM"
-            });
-
-            // Update order
-            order.ProducedQuantity = producedQty;
             order.Status = nameof(ProductionStatus.Completed);
-            order.ActualFinishDate = DateTime.UtcNow;
+            order.ProducedQuantity = order.PlannedQuantity;
 
-            // Create finished goods receipt
-            _context.FinishedGoodsReceipts.Add(new FinishedGoodsReceipt
-            {
-                OrderId = order.Id,
-                ProductId = order.ProductId,
-                Quantity = producedQty,
-                ReceiptDate = DateTime.UtcNow
-            });
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
 
-            try
-            {
-                await _context.SaveChangesAsync(); // EF will check RowVersion
-                await transaction.CommitAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                await transaction.RollbackAsync();
-                return Conflict(new
-                {
-                    Message = "Concurrency conflict detected. Stock or order was modified by another user. Please retry."
-                });
-            }
-
-            return Ok(new
-            {
-                Message = "Production completed successfully.",
-                OrderId = order.Id,
-                ProducedQuantity = order.ProducedQuantity,
-                Status = order.Status
-            });
+            return Ok("Production completed");
         }
         catch (Exception ex)
         {
@@ -628,4 +259,124 @@ public class ProductionController : ControllerBase
             return StatusCode(500, ex.Message);
         }
     }
+    #endregion
+
+    #region 🧩 Private Methods
+
+    private async Task<ProductionOrder> CreateProductionOrderAsync(CreateProductionOrderDto dto, BillOfMaterial bom)
+    {
+        var order = new ProductionOrder
+        {
+            Id = Guid.NewGuid(),
+            OrderNumber = $"PROD-{Guid.NewGuid().ToString()[..8]}",
+            ProductId = dto.ProductId,
+            BillOfMaterialId = bom.Id,
+            PlannedQuantity = dto.Quantity,
+            Status = nameof(ProductionStatus.Planned),
+            PlannedStartDate = dto.StartDate,
+            PlannedFinishDate = dto.FinishDate
+        };
+
+        _context.ProductionOrders.Add(order);
+        await _context.SaveChangesAsync();
+
+        return order;
+    }
+
+    private async Task ReserveStockAndCreatePOs(
+        ProductionOrder order,
+        BillOfMaterial bom,
+        Dictionary<Guid, PurchaseOrder> supplierOrders)
+    {
+        foreach (var item in bom.Items)
+        {
+            var stock = await GetStock(item.ComponentId);
+
+            var requiredQty = item.Quantity * order.PlannedQuantity;
+
+            var reserved = Math.Min(stock.QuantityAvailable, requiredQty);
+
+            stock.QuantityAvailable -= reserved;
+            stock.QuantityReserved += reserved;
+
+            var shortage = requiredQty - reserved;
+
+            if (shortage > 0)
+                await HandleSupplier(item, shortage, supplierOrders);
+
+            AddStockTransaction(order.Id, item.ComponentId, reserved, StockTransactionType.RESERVE);
+        }
+    }
+
+    private async Task HandleSupplier(BillOfMaterialItem item, decimal shortage,
+        Dictionary<Guid, PurchaseOrder> supplierOrders)
+    {
+        var supplier = await _context.ProductSuppliers
+            .Where(x => x.ProductId == item.ComponentId)
+            .OrderByDescending(x => x.IsPreferred)
+            .ThenBy(x => x.Price)
+            .FirstOrDefaultAsync();
+
+        if (supplier == null)
+            throw new Exception("No supplier found");
+
+        if (!supplierOrders.ContainsKey(supplier.SupplierId))
+        {
+            supplierOrders[supplier.SupplierId] = new PurchaseOrder
+            {
+                Id = Guid.NewGuid(),
+                OrderNumber = $"PO-{Guid.NewGuid().ToString()[..8]}",
+                SupplierId = supplier.SupplierId,
+                OrderDate = DateTime.UtcNow,
+                ExpectedDate = DateTime.UtcNow.AddDays(supplier.LeadTimeInDays),
+                Status = PurchaseOrderStatus.Draft,
+                Items = new List<PurchaseOrderItem>()
+            };
+        }
+
+        supplierOrders[supplier.SupplierId].Items.Add(new PurchaseOrderItem
+        {
+            Id = Guid.NewGuid(),
+            ProductId = item.ComponentId,
+            Quantity = shortage,
+            UnitPrice = supplier.Price
+        });
+    }
+
+    private async Task<ProductStock> GetStock(Guid productId)
+    {
+        var stock = await _context.ProductStocks
+            .FirstOrDefaultAsync(s => s.ProductId == productId);
+
+        if (stock == null)
+            throw new Exception($"Stock not found for {productId}");
+
+        return stock;
+    }
+
+    private void AddStockTransaction(Guid orderId, Guid productId, decimal qty, StockTransactionType type)
+    {
+        _context.StockTransactions.Add(new StockTransaction
+        {
+            Id = Guid.NewGuid(),
+            ProductId = productId,
+            Quantity = qty,
+            Type = nameof(type),
+            ReferenceId = orderId,
+            Date = DateTime.UtcNow,
+            PerformedBy = "SYSTEM"
+        });
+    }
+
+    private void AddDefaultOperations(Guid orderId)
+    {
+        _context.ProductionOperations.AddRange(new List<ProductionOperation>
+        {
+            new() { Id = Guid.NewGuid(), OrderId = orderId, OperationName = "Cutting", SequenceNumber = 1, Status = "Pending" },
+            new() { Id = Guid.NewGuid(), OrderId = orderId, OperationName = "Assembly", SequenceNumber = 2, Status = "Pending" },
+            new() { Id = Guid.NewGuid(), OrderId = orderId, OperationName = "Packaging", SequenceNumber = 3, Status = "Pending" }
+        });
+    }
+
+    #endregion
 }
