@@ -13,6 +13,9 @@ public class PurchaseOrderItem
     public decimal UnitPrice { get; set; }
     public decimal TotalPrice { get; set; }
 
+    //  ADD THIS
+    public Guid? SalesOrderItemId { get; set; }
+    public SalesOrderItem SalesOrderItem { get; set; }
     // Navigation
     public PurchaseOrder PurchaseOrder { get; set; }
     public ProductEntity Product { get; set; }

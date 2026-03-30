@@ -11,7 +11,8 @@ public class SalesOrderItem
     public decimal ReservedQuantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal TotalPrice { get; set; }
-
+    public ICollection<PurchaseOrderItem> PurchaseOrderItems { get; set; }
+    public ICollection<ProductionOrder> ProductionOrders { get; set; }
     // Navigation
     public SalesOrder SalesOrder { get; set; }
     public ProductEntity Product { get; set; }

@@ -14,12 +14,10 @@ namespace ERP.Controllers;
 public class ProductController : ControllerBase
 {
     private readonly ManufacturingDbContext _context;
-    private readonly Helper _helper;
 
-    public ProductController(ManufacturingDbContext context, Helper helper)
+    public ProductController(ManufacturingDbContext context)
     {
         _context = context;
-        _helper = helper;
     }
 
     // GET: api/product
@@ -52,7 +50,7 @@ public class ProductController : ControllerBase
     {
         var product = new ProductEntity
         {
-            Code = _helper.GenerateCode(),
+            Code = Helper.GenerateCode(),
             Name = dto.Name,
             Unit = dto.Unit,
             UnitCost = dto.UnitCost,
@@ -93,7 +91,7 @@ public class ProductController : ControllerBase
         };
 
         // 👇 Call your function here
-        price.FinalPrice = _helper.GetFinalPrice(price);
+        price.FinalPrice = Helper.GetFinalPrice(price);
 
         _context.Prices.Add(price);
 

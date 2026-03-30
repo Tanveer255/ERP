@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using ERP.Entity.Document;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
@@ -53,6 +54,8 @@ public class ProductionOrder
     public DateTime? ActualFinishDate { get; set; }
     [Timestamp]
     public byte[] RowVersion { get; set; }
+    public Guid? SalesOrderItemId { get; set; }
+    public SalesOrderItem SalesOrderItem { get; set; }
 
     // Production operations (e.g., routing steps)
     [JsonIgnore]

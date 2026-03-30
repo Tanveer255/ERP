@@ -1,17 +1,19 @@
-﻿using ERP.Entity.Product;
+﻿using ERP.Entity.Document;
+using ERP.Entity.Product;
+using ERP.Enum;
 
 namespace ERP.Service;
 
-public class Helper
+public static class Helper
 {
-    public string GenerateCode()
+    public static string GenerateCode()
     {
         string randomNo;
         Random random = new Random();
         randomNo = random.Next(100000000, 999999999).ToString();
         return randomNo;
     }
-    public decimal GetFinalPrice(Price price)
+    public static decimal GetFinalPrice(Price price)
     {
         decimal priceAfterDiscount = price.SalePrice;
 
@@ -24,5 +26,14 @@ public class Helper
         decimal tax = priceAfterDiscount * price.TaxPercentage / 100;
 
         return priceAfterDiscount + tax;
+    }
+    public static void UpdateOrderStatus(SalesOrder order)
+    {
+        if (order.Items.All(i => i.ReservedQuantity == i.RequestedQuantity))
+            order.Status = SalesOrderStatus.Confirmed;
+        else if (order.Items.Any(i => i.ReservedQuantity > 0))
+            order.Status = SalesOrderStatus.PartiallyReserved;
+        else
+            order.Status = SalesOrderStatus.Pending;
     }
 }
