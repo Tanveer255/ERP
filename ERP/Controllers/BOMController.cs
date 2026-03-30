@@ -32,6 +32,7 @@ public class BOMController : ControllerBase
             return NotFound("Finished product not found.");
 
         // Check for duplicates in request
+
         var duplicateComponents = dto.Components
             .GroupBy(c => c.ComponentId)
             .Where(g => g.Count() > 1)
