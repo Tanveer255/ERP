@@ -1,6 +1,7 @@
 ﻿using ERP.Entity.Document;
 using ERP.Entity.Product;
 using ERP.Enum;
+using Microsoft.EntityFrameworkCore;
 
 namespace ERP.Service;
 
@@ -37,5 +38,24 @@ public static class Helper
 
         else
             order.ReservationStatus = ReservationStatus.None;
+    }
+    public static async Task<bool> ExecuteWithRetryAsync(Func<Task> action, int maxRetry = 3)
+    {
+        int retry = maxRetry;
+
+        while (retry > 0)
+        {
+            try
+            {
+                await action();
+                return true;
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                retry--;
+                if (retry == 0) return false;
+            }
+        }
+        return false;
     }
 }

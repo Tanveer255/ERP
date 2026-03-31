@@ -3,6 +3,7 @@
 public enum ProductionStatus
 {
     Planned,
+    Ready,
     InProgress,
     Completed,
     Cancelled,
