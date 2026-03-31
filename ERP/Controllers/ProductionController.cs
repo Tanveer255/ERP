@@ -49,7 +49,7 @@ public class ProductionController : ControllerBase
         if (dto.ProductId == Guid.Empty)
             return BadRequest("ProductId is required.");
 
-        if (dto.Quantity <= 0)
+        if (dto.QuantityRequested <= 0)
             return BadRequest("Quantity must be greater than zero.");
 
         var product = await _context.Products.FindAsync(dto.ProductId);
@@ -271,7 +271,7 @@ public class ProductionController : ControllerBase
             OrderNumber = $"PROD-{Guid.NewGuid().ToString()[..8]}",
             ProductId = dto.ProductId,
             BillOfMaterialId = bom.Id,
-            PlannedQuantity = dto.Quantity,
+            PlannedQuantity = dto.QuantityRequested,
             Status = nameof(ProductionStatus.Planned),
             PlannedStartDate = dto.StartDate,
             PlannedFinishDate = dto.FinishDate
@@ -338,7 +338,7 @@ public class ProductionController : ControllerBase
         {
             Id = Guid.NewGuid(),
             ProductId = item.ComponentId,
-            RequestedQuantity = shortage,
+            QuantityRequested = shortage,
             UnitPrice = supplier.Price
         });
     }

@@ -12,7 +12,7 @@ public class StockTransaction
     // The product/material being moved
     public Guid ProductId { get; set; }
 
-    // RequestedQuantity of the movement (negative for issue, positive for receipt)
+    // QuantityRequested of the movement (negative for issue, positive for receipt)
     public decimal Quantity { get; set; }
 
     // Type of transaction: ISSUE, RECEIPT, ADJUSTMENT, etc.

@@ -63,7 +63,7 @@ public class ProductController : ControllerBase
         var stock = new ProductStock
         {
             ProductId = product.Id,
-            QuantityAvailable = dto.Quantity,
+            QuantityAvailable = dto.QuantityRequested,
             QuantityReserved = 0.0m,
             QuantityInProduction = 0.0m,
             QuantityQuarantined = 0.0m,

@@ -9,6 +9,6 @@ public class CreateBOMDto
 public class BOMComponentDto
 {
     public Guid ComponentId { get; set; }     // Component product
-    public decimal Quantity { get; set; }     // RequestedQuantity required
+    public decimal QuantityRequested { get; set; }     // QuantityRequested required
     public string Unit { get; set; }
 }

@@ -46,8 +46,8 @@ public class ProductionOrderSummaryDto
     public Guid ProductionOrderId { get; set; }    // Unique MO ID
     public string OrderNumber { get; set; }        // MO Number
     public Guid ProductId { get; set; }            // Product being produced
-    public decimal PlannedQuantity { get; set; }   // Planned quantity to produce
-    public decimal ProducedQuantity { get; set; }  // Already produced quantity
+    public decimal QuantityPlanned { get; set; }   // Planned quantity to produce
+    public decimal QuantityProduced { get; set; }  // Already produced quantity
     public string Status { get; set; }             // Current status (Planned, InProgress, Completed)
     public DateTime PlannedStartDate { get; set; } // Scheduled start
     public DateTime PlannedFinishDate { get; set; }// Scheduled finish

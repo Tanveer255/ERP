@@ -7,7 +7,7 @@ public class GoodsReceipt
     public Guid PurchaseOrderId { get; set; }
     public Guid ProductId { get; set; }
 
-    public decimal ReceivedQuantity { get; set; }
+    public decimal QuantityReceived { get; set; }
 
     public DateTime ReceiptDate { get; set; }
 

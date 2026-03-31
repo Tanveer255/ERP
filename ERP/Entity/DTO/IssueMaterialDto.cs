@@ -4,6 +4,6 @@ public class IssueMaterialDto
 {
     public Guid OrderId { get; set; }
     public Guid MaterialId { get; set; }
-    public decimal PlannedQty { get; set; }
-    public decimal ConsumedQty { get; set; }
+    public decimal QuantityPlanned { get; set; }
+    public decimal QuantityConsumed { get; set; }
 }

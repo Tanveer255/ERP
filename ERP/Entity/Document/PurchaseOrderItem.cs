@@ -7,7 +7,7 @@ public class PurchaseOrderItem
     public Guid PurchaseOrderId { get; set; }
     public Guid ProductId { get; set; }
 
-    public decimal RequestedQuantity { get; set; }
+    public decimal QuantityRequested { get; set; }
     public decimal QuantityReceived { get; set; }
 
     public decimal UnitPrice { get; set; }

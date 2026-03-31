@@ -20,7 +20,7 @@ public class SalesOrderService
             .Include(i => i.SalesOrder)
             .Where(i =>
                 i.ProductId == productId &&
-                i.RequestedQuantity > i.ReservedQuantity)
+                i.QuantityRequested > i.QuantityReserved)
             .OrderBy(i => i.SalesOrder.OrderDate) // FIFO
             .ToListAsync();
 
@@ -32,7 +32,7 @@ public class SalesOrderService
 
         foreach (var item in items)
         {
-            var remaining = item.RequestedQuantity - item.ReservedQuantity;
+            var remaining = item.QuantityRequested - item.QuantityReserved;
             if (remaining <= 0) continue;
 
             var qty = Math.Min(remaining, stock.QuantityAvailable);
@@ -40,7 +40,7 @@ public class SalesOrderService
             stock.QuantityAvailable -= qty;
             stock.QuantityReserved += qty;
 
-            item.ReservedQuantity += qty;
+            item.QuantityReserved += qty;
 
             _context.StockTransactions.Add(new StockTransaction
             {

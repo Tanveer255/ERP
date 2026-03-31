@@ -71,14 +71,14 @@ public class SalesController : ControllerBase
                     .OrderByDescending(p => p.Id)
                     .FirstOrDefault()?.SalePrice ?? 0;
 
-                var totalPrice = unitPrice * item.Quantity;
+                var totalPrice = unitPrice * item.QuantityRequested;
                 totalAmount += totalPrice;
 
                 var salesOrderItem = new SalesOrderItem
                 {
                     Id = Guid.NewGuid(),
                     ProductId = item.ProductId,
-                    RequestedQuantity = item.Quantity,
+                    QuantityRequested = item.QuantityRequested,
                     UnitPrice = unitPrice,
                     TotalPrice = totalPrice
                 };
@@ -88,12 +88,12 @@ public class SalesController : ControllerBase
                 //  Reserve stock
                 var reservedQty = await ReserveStockAsync(
                     item.ProductId,
-                    item.Quantity,
+                    item.QuantityRequested,
                     salesOrderItem,
                     order.Id,
                     dto.CustomerName);
 
-                var shortage = item.Quantity - reservedQty;
+                var shortage = item.QuantityRequested - reservedQty;
 
                 if (shortage <= 0) continue;
 
@@ -194,8 +194,8 @@ public class SalesController : ControllerBase
                 TotalAmount = order.TotalAmount,
 
                 TotalItems = order.Items.Count,
-                ReservedItems = order.Items.Count(i => i.ReservedQuantity >= i.RequestedQuantity),
-                PendingItems = order.Items.Count(i => i.ReservedQuantity < i.RequestedQuantity),
+                ReservedItems = order.Items.Count(i => i.QuantityReserved >= i.QuantityRequested),
+                PendingItems = order.Items.Count(i => i.QuantityReserved < i.QuantityRequested),
 
                 PurchaseOrders = purchaseOrders.Values
                     .Select(po => new PurchaseOrderSummaryDto
@@ -208,7 +208,7 @@ public class SalesController : ControllerBase
                     .Select(p => new ProductionOrderSummaryDto
                     {
                         ProductId = p.ProductId,
-                        PlannedQuantity = p.PlannedQuantity
+                        QuantityPlanned = p.PlannedQuantity
                     }).ToList()
             };
 
@@ -256,7 +256,7 @@ public class SalesController : ControllerBase
                 // Auto-receive pending POs to fulfill this sales order
                 foreach (var poItem in pendingPOItems)
                 {
-                    var poQtyToReceive = poItem.RequestedQuantity - poItem.QuantityReceived;
+                    var poQtyToReceive = poItem.QuantityRequested - poItem.QuantityReceived;
                     if (poQtyToReceive <= 0)
                         continue;
 
@@ -292,16 +292,16 @@ public class SalesController : ControllerBase
                     poItem.QuantityReceived += poQtyToReceive;
 
                     // If all items in PO are received, mark PO as received
-                    if (poItem.QuantityReceived >= poItem.RequestedQuantity)
+                    if (poItem.QuantityReceived >= poItem.QuantityRequested)
                     {
                         poItem.PurchaseOrder.Status = PurchaseOrderStatus.Received;
-                        poItem.RequestedQuantity -= poItem.RequestedQuantity;
+                        poItem.QuantityRequested -= poItem.QuantityRequested;
                     }
                 }
 
                 // 3️⃣ Recalculate available stock
                 availableStock = stock?.QuantityAvailable ?? 0;
-                var remainingQty = item.RequestedQuantity - item.ReservedQuantity;
+                var remainingQty = item.QuantityRequested - item.QuantityReserved;
                 if (remainingQty <= 0 || availableStock <= 0)
                     continue;
 
@@ -309,10 +309,10 @@ public class SalesController : ControllerBase
                 var qtyToReserve = Math.Min(remainingQty, availableStock);
                 stock.QuantityAvailable -= qtyToReserve;
                 stock.QuantityReserved += qtyToReserve;
-                item.ReservedQuantity += qtyToReserve;
-                item.RequestedQuantity -= qtyToReserve;
+                item.QuantityReserved += qtyToReserve;
+                item.QuantityRequested -= qtyToReserve;
 
-                if (item.ReservedQuantity > 0)
+                if (item.QuantityReserved > 0)
                     stockAvailable = true;
 
                 // Log stock transaction for reservation
@@ -347,7 +347,7 @@ public class SalesController : ControllerBase
                     OrderNumber = po.OrderNumber,
                     TotalItems = po.Items.Count,
                     Status = po.Status.ToString(),
-                    PendingItems = po.Items.Sum(i => i.RequestedQuantity - i.QuantityReceived)
+                    PendingItems = po.Items.Sum(i => i.QuantityRequested - i.QuantityReceived)
                 }).ToListAsync();
 
             // 7️⃣ Prepare pending production orders
@@ -359,8 +359,8 @@ public class SalesController : ControllerBase
                     ProductionOrderId = po.Id,
                     OrderNumber = po.OrderNumber,
                     ProductId = po.ProductId,
-                    PlannedQuantity = po.PlannedQuantity,
-                    ProducedQuantity = po.ProducedQuantity,
+                    QuantityPlanned = po.PlannedQuantity,
+                    QuantityProduced = po.ProducedQuantity,
                     Status = po.Status,
                     PlannedStartDate = po.PlannedStartDate,
                     PlannedFinishDate = po.PlannedFinishDate,
@@ -377,8 +377,8 @@ public class SalesController : ControllerBase
                 Status = order.Status.ToString(),
                 TotalAmount = order.TotalAmount,
                 TotalItems = order.Items.Count,
-                ReservedItems = order.Items.Count(i => i.ReservedQuantity >= i.RequestedQuantity),
-                PendingItems = order.Items.Count(i => i.ReservedQuantity < i.RequestedQuantity),
+                ReservedItems = order.Items.Count(i => i.QuantityReserved >= i.QuantityRequested),
+                PendingItems = order.Items.Count(i => i.QuantityReserved < i.QuantityRequested),
                 IsStockAvailable = stockAvailable,
                 Message = stockAvailable
                     ? "Stock reserved successfully. Pending POs auto-received if needed."
@@ -417,7 +417,7 @@ public class SalesController : ControllerBase
         stock.QuantityAvailable -= reservedQty;
         stock.QuantityReserved += reservedQty;
 
-        item.ReservedQuantity = reservedQty;
+        item.QuantityReserved = reservedQty;
 
         _context.StockTransactions.Add(new StockTransaction
         {
@@ -475,7 +475,7 @@ public class SalesController : ControllerBase
 
         if (existing != null)
         {
-            existing.RequestedQuantity += quantity;
+            existing.QuantityRequested += quantity;
             existing.TotalPrice += quantity * existing.UnitPrice;
         }
         else
@@ -484,7 +484,7 @@ public class SalesController : ControllerBase
             {
                 Id = Guid.NewGuid(),
                 ProductId = productId,
-                RequestedQuantity = quantity,
+                QuantityRequested = quantity,
                 UnitPrice = price,
                 TotalPrice = price * quantity,
                 SalesOrderItemId = salesOrderItemId

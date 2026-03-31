@@ -53,7 +53,7 @@ public class BOMController : ControllerBase
             if (component.ComponentId == dto.ProductId)
                 return BadRequest("Product cannot be its own component.");
 
-            if (component.Quantity <= 0)
+            if (component.QuantityRequested <= 0)
                 return BadRequest("Component quantity must be greater than zero.");
 
             if (existingComponentIds.Contains(component.ComponentId))
@@ -85,7 +85,7 @@ public class BOMController : ControllerBase
                 {
                     BillOfMaterialId = bom.Id,
                     ComponentId = component.ComponentId,
-                    Quantity = component.Quantity,
+                    Quantity = component.QuantityRequested,
                     Unit = component.Unit
                 };
                 _context.BillOfMaterialItems.Add(item);

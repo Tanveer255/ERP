@@ -4,7 +4,7 @@ public class CreateProductDto
 {
     public string Name { get; set; }
     public string Unit { get; set; }
-    public decimal Quantity { get; set; }     
+    public decimal QuantityRequested { get; set; }     
     public decimal SalePrice { get; set; }     
     public decimal UnitCost { get; set; }     
     public decimal DiscountAmount { get; set; }     
