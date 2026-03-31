@@ -8,6 +8,7 @@ using ERP.Entity.DTO.Document;
 using Microsoft.EntityFrameworkCore;
 using ERP.Entity.Product;
 using ERP.Service;
+using ERP.Entity.Contact;
 
 namespace ERP.Controllers;
 
@@ -22,6 +23,9 @@ public class SalesController : ControllerBase
         _context = context;
     }
 
+    // ================================
+    // CREATE SALES ORDER
+    // ================================
     [HttpPost("create-sales-order")]
     public async Task<IActionResult> CreateSalesOrder(CreateSalesOrderDto dto)
     {
@@ -32,12 +36,14 @@ public class SalesController : ControllerBase
 
         try
         {
+            // 1️⃣ Create new Sales Order
+
             var order = new SalesOrder
             {
                 Id = Guid.NewGuid(),
                 OrderNumber = $"SO-{DateTime.UtcNow.Ticks}",
                 OrderDate = DateTime.UtcNow,
-                Status = SalesOrderStatus.Pending, // ✅ start as Pending
+                Status = SalesOrderStatus.Draft, // ✅ Always start as Draft
                 CustomerName = dto.CustomerName,
                 CustomerEmail = dto.CustomerEmail,
                 Items = new List<SalesOrderItem>()
@@ -46,8 +52,10 @@ public class SalesController : ControllerBase
             decimal totalAmount = 0;
             var purchaseOrders = new Dictionary<Guid, PurchaseOrder>();
 
+            // 2️⃣ Process each order item
             foreach (var item in dto.Items)
             {
+                // Fetch product with prices
                 var product = await _context.Products
                     .Include(p => p.Prices)
                     .FirstOrDefaultAsync(p => p.Id == item.ProductId);
@@ -55,217 +63,110 @@ public class SalesController : ControllerBase
                 if (product == null)
                     return BadRequest($"Product {item.ProductId} not found.");
 
-                var stock = await _context.ProductStocks
-                    .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
-
                 var unitPrice = product.Prices.FirstOrDefault()?.SalePrice ?? 0;
                 var totalPrice = unitPrice * item.Quantity;
                 totalAmount += totalPrice;
 
-                // ✅ CREATE ITEM FIRST
+                // Create SalesOrderItem
                 var salesOrderItem = new SalesOrderItem
                 {
                     Id = Guid.NewGuid(),
                     ProductId = item.ProductId,
                     RequestedQuantity = item.Quantity,
-                    ReservedQuantity = 0,
                     UnitPrice = unitPrice,
                     TotalPrice = totalPrice
                 };
 
                 order.Items.Add(salesOrderItem);
 
-                var availableQty = stock?.QuantityAvailable ?? 0;
-                var reservedQty = Math.Min(item.Quantity, availableQty);
+                // 3️⃣ Reserve stock if available
+                var reservedQty = await ReserveStockAsync(
+                    item.ProductId,
+                    item.Quantity,
+                    salesOrderItem,
+                    order.Id,
+                    dto.CustomerName);
+
                 var shortage = item.Quantity - reservedQty;
 
-                // ✅ RESERVE STOCK
-                if (reservedQty > 0 && stock != null)
+                if (shortage <= 0) continue;
+
+                // 4️⃣ Check for BOM (production) or purchase
+                var bom = await _context.BillOfMaterials
+                    .Include(b => b.Items)
+                    .FirstOrDefaultAsync(b => b.ProductId == item.ProductId);
+
+                if (bom == null)
                 {
-                    stock.QuantityAvailable -= reservedQty;
-                    stock.QuantityReserved += reservedQty;
+                    //  PURCHASE for shortage
+                    var supplier = await GetPreferredSupplierAsync(item.ProductId);
+                    if (supplier == null)
+                        return BadRequest("No supplier found.");
 
-                    salesOrderItem.ReservedQuantity = reservedQty;
+                    var po = GetOrCreatePurchaseOrder(purchaseOrders, supplier.SupplierId);
 
-                    _context.StockTransactions.Add(new StockTransaction
+                    AddOrUpdatePurchaseOrderItem(
+                        po,
+                        item.ProductId,
+                        shortage,
+                        supplier.Price,
+                        salesOrderItem.Id);
+                }
+                else
+                {
+                    //  PRODUCTION for shortage
+                    var productionOrder = new ProductionOrder
                     {
                         Id = Guid.NewGuid(),
                         ProductId = item.ProductId,
-                        Quantity = reservedQty,
-                        Type = "RESERVE",
-                        ReferenceId = order.Id,
-                        Date = DateTime.UtcNow,
-                        PerformedBy = dto.CustomerName
-                    });
-                }
+                        BillOfMaterialId = bom.Id,
+                        PlannedQuantity = shortage,
+                        Status = nameof(ProductionStatus.Planned),
+                        SalesOrderItemId = salesOrderItem.Id
+                    };
 
-                // ✅ HANDLE SHORTAGE
-                if (shortage > 0)
-                {
-                    var bom = await _context.BillOfMaterials
-                        .Include(b => b.Items)
-                        .FirstOrDefaultAsync(b => b.ProductId == item.ProductId);
+                    _context.ProductionOrders.Add(productionOrder);
 
-                    if (bom == null)
+                    // Reserve components or create purchase orders for materials
+                    foreach (var bomItem in bom.Items)
                     {
-                        // 🔵 PURCHASE
-                        var supplier = await _context.ProductSuppliers
-                            .Include(ps => ps.Supplier)
-                            .Where(ps => ps.ProductId == item.ProductId && ps.Supplier.IsActive)
-                            .OrderByDescending(ps => ps.IsPreferred)
-                            .FirstOrDefaultAsync();
+                        var requiredQty = bomItem.Quantity * shortage;
 
-                        if (supplier == null)
-                            return BadRequest("No supplier found.");
+                        var materialStock = await _context.ProductStocks
+                            .FirstOrDefaultAsync(s => s.ProductId == bomItem.ComponentId);
 
-                        if (!purchaseOrders.ContainsKey(supplier.SupplierId))
-                        {
-                            purchaseOrders[supplier.SupplierId] = new PurchaseOrder
-                            {
-                                Id = Guid.NewGuid(),
-                                OrderNumber = $"AUTO-PO-{DateTime.UtcNow.Ticks}",
-                                SupplierId = supplier.SupplierId,
-                                OrderDate = DateTime.UtcNow,
-                                Status = PurchaseOrderStatus.Pending,
-                                Items = new List<PurchaseOrderItem>()
-                            };
-                        }
+                        var available = materialStock?.QuantityAvailable ?? 0;
+                        var materialShortage = requiredQty - available;
 
-                        var po = purchaseOrders[supplier.SupplierId];
+                        if (materialShortage <= 0) continue;
 
-                        // ✅ Prevent over-purchase + duplicates
-                        var alreadyOrdered = po.Items
-                            .Where(x => x.SalesOrderItemId == salesOrderItem.Id &&
-                                        x.ProductId == item.ProductId)
-                            .Sum(x => x.Quantity);
+                        var supplier = await GetPreferredSupplierAsync(bomItem.ComponentId);
+                        if (supplier == null) continue;
 
-                        var remainingToOrder = shortage - alreadyOrdered;
+                        var po = GetOrCreatePurchaseOrder(purchaseOrders, supplier.SupplierId);
 
-                        if (remainingToOrder > 0)
-                        {
-                            var existingPoItem = po.Items
-                                .FirstOrDefault(x =>
-                                    x.ProductId == item.ProductId &&
-                                    x.SalesOrderItemId == salesOrderItem.Id);
-
-                            if (existingPoItem != null)
-                            {
-                                existingPoItem.Quantity += remainingToOrder;
-                                existingPoItem.TotalPrice += remainingToOrder * existingPoItem.UnitPrice;
-                            }
-                            else
-                            {
-                                po.Items.Add(new PurchaseOrderItem
-                                {
-                                    Id = Guid.NewGuid(),
-                                    ProductId = item.ProductId,
-                                    Quantity = remainingToOrder,
-                                    UnitPrice = supplier.Price,
-                                    TotalPrice = supplier.Price * remainingToOrder,
-                                    SalesOrderItemId = salesOrderItem.Id
-                                });
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // 🔵 PRODUCTION
-                        var productionOrder = new ProductionOrder
-                        {
-                            Id = Guid.NewGuid(),
-                            ProductId = item.ProductId,
-                            BillOfMaterialId = bom.Id,
-                            PlannedQuantity = shortage,
-                            Status = nameof(ProductionStatus.Planned),
-
-                            // 🔗 LINK
-                            SalesOrderItemId = salesOrderItem.Id
-                        };
-
-                        _context.ProductionOrders.Add(productionOrder);
-
-                        foreach (var bomItem in bom.Items)
-                        {
-                            var requiredQty = bomItem.Quantity * shortage;
-
-                            var materialStock = await _context.ProductStocks
-                                .FirstOrDefaultAsync(s => s.ProductId == bomItem.ComponentId);
-
-                            var availableMaterial = materialStock?.QuantityAvailable ?? 0;
-                            var materialShortage = requiredQty - availableMaterial;
-
-                            if (materialShortage > 0)
-                            {
-                                var supplier = await _context.ProductSuppliers
-                                    .Include(ps => ps.Supplier)
-                                    .Where(ps => ps.ProductId == bomItem.ComponentId && ps.Supplier.IsActive)
-                                    .OrderByDescending(ps => ps.IsPreferred)
-                                    .FirstOrDefaultAsync();
-
-                                if (supplier != null)
-                                {
-                                    if (!purchaseOrders.ContainsKey(supplier.SupplierId))
-                                    {
-                                        purchaseOrders[supplier.SupplierId] = new PurchaseOrder
-                                        {
-                                            Id = Guid.NewGuid(),
-                                            OrderNumber = $"AUTO-PO-{DateTime.UtcNow.Ticks}",
-                                            SupplierId = supplier.SupplierId,
-                                            OrderDate = DateTime.UtcNow,
-                                            Status = PurchaseOrderStatus.Pending,
-                                            Items = new List<PurchaseOrderItem>()
-                                        };
-                                    }
-
-                                    var po = purchaseOrders[supplier.SupplierId];
-
-                                    var alreadyOrdered = po.Items
-                                        .Where(x => x.SalesOrderItemId == salesOrderItem.Id &&
-                                                    x.ProductId == bomItem.ComponentId)
-                                        .Sum(x => x.Quantity);
-
-                                    var remainingToOrder = materialShortage - alreadyOrdered;
-
-                                    if (remainingToOrder > 0)
-                                    {
-                                        var existingPoItem = po.Items
-                                            .FirstOrDefault(x =>
-                                                x.ProductId == bomItem.ComponentId &&
-                                                x.SalesOrderItemId == salesOrderItem.Id);
-
-                                        if (existingPoItem != null)
-                                        {
-                                            existingPoItem.Quantity += remainingToOrder;
-                                            existingPoItem.TotalPrice += remainingToOrder * existingPoItem.UnitPrice;
-                                        }
-                                        else
-                                        {
-                                            po.Items.Add(new PurchaseOrderItem
-                                            {
-                                                Id = Guid.NewGuid(),
-                                                ProductId = bomItem.ComponentId,
-                                                Quantity = remainingToOrder,
-                                                UnitPrice = supplier.Price,
-                                                TotalPrice = supplier.Price * remainingToOrder,
-                                                SalesOrderItemId = salesOrderItem.Id
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        AddOrUpdatePurchaseOrderItem(
+                            po,
+                            bomItem.ComponentId,
+                            materialShortage,
+                            supplier.Price,
+                            salesOrderItem.Id);
                     }
                 }
             }
 
+            // 5️⃣ Add all generated purchase orders
             foreach (var po in purchaseOrders.Values)
                 _context.PurchaseOrders.Add(po);
-
+            // 6️⃣ Update totals and reservation status
             order.TotalAmount = totalAmount;
-            Helper.UpdateOrderStatus(order);
+
+            // Update reservation only (do not change main order status)
+            Helper.UpdateReservationStatus(order);
+
+            // 7️⃣ Save order and commit
             await _context.SalesOrders.AddAsync(order);
             await _context.SaveChangesAsync();
-
             await transaction.CommitAsync();
 
             return Ok(order);
@@ -277,91 +178,100 @@ public class SalesController : ControllerBase
         }
     }
 
-    [HttpPost("update-sales-order-stock")]
-    public async Task<IActionResult> UpdateSalesOrderStock([FromQuery] Guid salesOrderId)
+    // ================================
+    // COMMON METHODS
+    // ================================
+
+    private async Task<decimal> ReserveStockAsync(
+     Guid productId,
+     decimal quantity,
+     SalesOrderItem item,
+     Guid orderId,
+     string performedBy)
     {
-        var order = await _context.SalesOrders
-            .Include(o => o.Items)
-            .ThenInclude(i => i.Product)
-            .FirstOrDefaultAsync(o => o.Id == salesOrderId);
+        var stock = await _context.ProductStocks
+            .FirstOrDefaultAsync(s => s.ProductId == productId);
 
-        if (order == null)
-            return NotFound("Sales order not found.");
+        if (stock == null || stock.QuantityAvailable <= 0)
+            return 0;
 
-        using var transaction = await _context.Database.BeginTransactionAsync();
+        var reservedQty = Math.Min(quantity, stock.QuantityAvailable);
 
-        try
+        stock.QuantityAvailable -= reservedQty;
+        stock.QuantityReserved += reservedQty;
+
+        item.ReservedQuantity = reservedQty;
+
+        _context.StockTransactions.Add(new StockTransaction
         {
-            foreach (var item in order.Items.Where(i => i.RequestedQuantity > i.ReservedQuantity))
+            Id = Guid.NewGuid(),
+            ProductId = productId,
+            Quantity = reservedQty,
+            Type = "RESERVE",
+            ReferenceId = orderId,
+            Date = DateTime.UtcNow,
+            PerformedBy = performedBy
+        });
+
+        return reservedQty;
+    }
+
+    private async Task<ProductSupplier?> GetPreferredSupplierAsync(Guid productId)
+    {
+        return await _context.ProductSuppliers
+            .Include(ps => ps.Supplier)
+            .Where(ps => ps.ProductId == productId && ps.Supplier.IsActive)
+            .OrderByDescending(ps => ps.IsPreferred)
+            .FirstOrDefaultAsync();
+    }
+
+    private PurchaseOrder GetOrCreatePurchaseOrder(
+        Dictionary<Guid, PurchaseOrder> purchaseOrders,
+        Guid supplierId)
+    {
+        if (!purchaseOrders.ContainsKey(supplierId))
+        {
+            purchaseOrders[supplierId] = new PurchaseOrder
             {
-                var stock = await _context.ProductStocks
-                    .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
-
-                if (stock == null || stock.QuantityAvailable <= 0)
-                    continue;
-
-                var remainingQty = item.RequestedQuantity - item.ReservedQuantity;
-                var qtyToReserve = Math.Min(remainingQty, stock.QuantityAvailable);
-
-                stock.QuantityAvailable -= qtyToReserve;
-                stock.QuantityReserved += qtyToReserve;
-
-                item.ReservedQuantity += qtyToReserve;
-
-                _context.StockTransactions.Add(new StockTransaction
-                {
-                    Id = Guid.NewGuid(),
-                    ProductId = item.ProductId,
-                    Quantity = qtyToReserve,
-                    Type = "RESERVE",
-                    ReferenceId = order.Id,
-                    Date = DateTime.UtcNow,
-                    PerformedBy = "System"
-                });
-            }
-
-            // Update order status
-            Helper.UpdateOrderStatus(order);
-
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            // Fetch prices for all items in one query to avoid multiple DB hits
-            var productIds = order.Items.Select(i => i.ProductId).ToList();
-
-            // Prepare response
-            var response = new SalesOrderResponseDto
-            {
-                Id = order.Id,
-                OrderNumber = order.OrderNumber,
-                OrderDate = order.OrderDate,
-                CustomerName = order.CustomerName,
-                CustomerEmail = order.CustomerEmail,
-                Status = order.Status,
-                Items = order.Items.Select(i =>
-                {
-                    return new SalesOrderItemResponseDto
-                    {
-                        ProductId = i.ProductId,
-                        ProductName = i.Product.Name,
-                        RequestedQuantity = i.RequestedQuantity,
-                        ReservedQuantity = i.ReservedQuantity,
-                        ShortQuantity = i.RequestedQuantity - i.ReservedQuantity,
-                        Price = i.UnitPrice,
-                        Total = i.UnitPrice * i.RequestedQuantity
-                    };
-                }).ToList()
+                Id = Guid.NewGuid(),
+                OrderNumber = $"AUTO-PO-{DateTime.UtcNow.Ticks}",
+                SupplierId = supplierId,
+                OrderDate = DateTime.UtcNow,
+                Status = PurchaseOrderStatus.Draft,
+                Items = new List<PurchaseOrderItem>()
             };
-
-            // Calculate order total dynamically
-            response.TotalAmount = response.Items.Sum(x => x.Total);
-
-            return Ok(response);
         }
-        catch (Exception ex)
+
+        return purchaseOrders[supplierId];
+    }
+
+    private void AddOrUpdatePurchaseOrderItem(
+        PurchaseOrder po,
+        Guid productId,
+        decimal quantity,
+        decimal price,
+        Guid salesOrderItemId)
+    {
+        var existing = po.Items.FirstOrDefault(x =>
+            x.ProductId == productId &&
+            x.SalesOrderItemId == salesOrderItemId);
+
+        if (existing != null)
         {
-            await transaction.RollbackAsync();
-            return StatusCode(500, ex.Message);
+            existing.Quantity += quantity;
+            existing.TotalPrice += quantity * existing.UnitPrice;
+        }
+        else
+        {
+            po.Items.Add(new PurchaseOrderItem
+            {
+                Id = Guid.NewGuid(),
+                ProductId = productId,
+                Quantity = quantity,
+                UnitPrice = price,
+                TotalPrice = price * quantity,
+                SalesOrderItemId = salesOrderItemId
+            });
         }
     }
 }

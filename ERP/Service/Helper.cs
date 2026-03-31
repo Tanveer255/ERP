@@ -27,13 +27,15 @@ public static class Helper
 
         return priceAfterDiscount + tax;
     }
-    public static void UpdateOrderStatus(SalesOrder order)
+    public static void UpdateReservationStatus(SalesOrder order)
     {
         if (order.Items.All(i => i.ReservedQuantity == i.RequestedQuantity))
-            order.Status = SalesOrderStatus.Confirmed;
+            order.ReservationStatus = ReservationStatus.Full;
+
         else if (order.Items.Any(i => i.ReservedQuantity > 0))
-            order.Status = SalesOrderStatus.PartiallyReserved;
+            order.ReservationStatus = ReservationStatus.Partial;
+
         else
-            order.Status = SalesOrderStatus.Pending;
+            order.ReservationStatus = ReservationStatus.None;
     }
 }

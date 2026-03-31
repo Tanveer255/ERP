@@ -11,6 +11,7 @@ public class SalesOrder
     public DateTime OrderDate { get; set; }
 
     public SalesOrderStatus Status { get; set; }
+    public ReservationStatus ReservationStatus { get; set; }
 
     public decimal TotalAmount { get; set; }
 
