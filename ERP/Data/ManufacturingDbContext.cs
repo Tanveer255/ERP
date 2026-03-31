@@ -33,6 +33,7 @@ public class ManufacturingDbContext : DbContext
     public DbSet<GoodsReceipt> GoodsReceipts { get; set; }
     public DbSet<SalesOrder> SalesOrders { get; set; }
     public DbSet<SalesOrderItem> SalesOrderItems { get; set; }
+    public DbSet<MrpPlan> MrpPlans { get; set; }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

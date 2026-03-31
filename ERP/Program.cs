@@ -1,5 +1,6 @@
 using ERP.Data;
 using ERP.Service;
+using ERP.Service.Document;
 using ERP.Service.Product;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,6 +11,7 @@ builder.Services.AddDbContext<ManufacturingDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<ProductService>();
 builder.Services.AddScoped<BillOfMaterialService>();
+builder.Services.AddScoped<MrpService>();
 
 
 // Add services to the container.

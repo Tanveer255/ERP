@@ -1,15 +1,17 @@
 ﻿using ERP.Data;
-using ERP.Entity.Document;
 using ERP.Entity;
+using ERP.Entity.Contact;
+using ERP.Entity.Document;
+using ERP.Entity.DTO;
+using ERP.Entity.DTO.Document;
+using ERP.Entity.Product;
 using ERP.Enum;
+using ERP.Service;
+using ERP.Service.Document;
+using ERP.Service.Product;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using ERP.Entity.DTO.Document;
 using Microsoft.EntityFrameworkCore;
-using ERP.Entity.Product;
-using ERP.Service;
-using ERP.Entity.Contact;
-using ERP.Service.Product;
 
 namespace ERP.Controllers;
 
@@ -21,13 +23,19 @@ public class SalesController : ControllerBase
     private readonly ProductService _productService;
     private readonly ILogger<SalesController> _logger;
     private readonly BillOfMaterialService _bomService;
+    private readonly MrpService _mrpService;
 
-    public SalesController(ManufacturingDbContext context, ProductService productService, ILogger<SalesController> logger, BillOfMaterialService bomService)
+    public SalesController(ManufacturingDbContext context,
+        ProductService productService,
+        ILogger<SalesController> logger,
+        BillOfMaterialService bomService,
+        MrpService mrpService)
     {
         _context = context;
         _productService = productService;
         _logger = logger;
         _bomService = bomService;
+        _mrpService = mrpService;
     }
 
     // ================================
@@ -43,6 +51,7 @@ public class SalesController : ControllerBase
 
         try
         {
+            // 1️⃣ Create Sales Order (ONLY DEMAND)
             var order = new SalesOrder
             {
                 Id = Guid.NewGuid(),
@@ -55,136 +64,44 @@ public class SalesController : ControllerBase
             };
 
             decimal totalAmount = 0;
-            var purchaseOrders = new Dictionary<Guid, PurchaseOrder>();
-            var productionOrders = new List<ProductionOrder>();
 
+            // 2️⃣ Add Items (NO STOCK / NO PO / NO PRODUCTION)
             foreach (var item in dto.Items)
             {
-                //  Get product
                 var result = await _productService.GetProductById(item.ProductId);
                 if (!result.IsSuccess)
-                    throw new Exception(result.Message);
+                    return BadRequest(result.Message);
 
                 var product = result.Data;
 
-                var unitPrice = product?.Prices?
-                    .OrderByDescending(p => p.Id)
-                    .FirstOrDefault()?.SalePrice ?? 0;
-
+                var unitPrice = product.Prices.FirstOrDefault()?.SalePrice ?? 0;
                 var totalPrice = unitPrice * item.QuantityRequested;
+
                 totalAmount += totalPrice;
 
-                var salesOrderItem = new SalesOrderItem
+                order.Items.Add(new SalesOrderItem
                 {
                     Id = Guid.NewGuid(),
                     ProductId = item.ProductId,
                     QuantityRequested = item.QuantityRequested,
+                    QuantityReserved = 0,
                     UnitPrice = unitPrice,
                     TotalPrice = totalPrice
-                };
-
-                order.Items.Add(salesOrderItem);
-
-                //  Reserve stock
-                var reservedQty = await ReserveStockAsync(
-                    item.ProductId,
-                    item.QuantityRequested,
-                    salesOrderItem,
-                    order.Id,
-                    dto.CustomerName);
-
-                var shortage = item.QuantityRequested - reservedQty;
-
-                if (shortage <= 0) continue;
-
-                //  Check BOM
-                var bomResult = await _bomService.GetBillOfMaterialByProductId(item.ProductId);
-
-                if (bomResult.Data == null)
-                {
-                    //  PURCHASE
-                    var supplier = await GetPreferredSupplierAsync(item.ProductId);
-                    if (supplier == null)
-                        throw new Exception($"No supplier found for product {item.ProductId}");
-
-                    var po = GetOrCreatePurchaseOrder(purchaseOrders, supplier.SupplierId);
-
-                    AddOrUpdatePurchaseOrderItem(
-                        po,
-                        item.ProductId,
-                        shortage,
-                        supplier.Price,
-                        salesOrderItem.Id);
-                }
-                else
-                {
-                    //  PRODUCTION
-                    var productionOrder = new ProductionOrder
-                    {
-                        Id = Guid.NewGuid(),
-                        OrderNumber = $"MO-{DateTime.UtcNow.Ticks}",
-
-                        ProductId = item.ProductId,
-                        BillOfMaterialId = bomResult.Data.Id,
-
-                        PlannedQuantity = shortage,
-                        ProducedQuantity = 0,
-
-                        Status = nameof(ProductionStatus.Planned),
-
-                        PlannedStartDate = DateTime.UtcNow,
-                        PlannedFinishDate = DateTime.UtcNow.AddDays(2),
-
-                        SalesOrderItemId = salesOrderItem.Id
-                    };
-
-                    _context.ProductionOrders.Add(productionOrder);
-                    productionOrders.Add(productionOrder);
-
-                    //  Handle BOM materials
-                    foreach (var bomItem in bomResult.Data.Items)
-                    {
-                        var requiredQty = bomItem.Quantity * shortage;
-
-                        var materialStock = await _context.ProductStocks
-                            .FirstOrDefaultAsync(s => s.ProductId == bomItem.ComponentId);
-
-                        var available = materialStock?.QuantityAvailable ?? 0;
-                        var materialShortage = requiredQty - available;
-
-                        if (materialShortage <= 0) continue;
-
-                        var supplier = await GetPreferredSupplierAsync(bomItem.ComponentId);
-                        if (supplier == null) continue;
-
-                        var po = GetOrCreatePurchaseOrder(purchaseOrders, supplier.SupplierId);
-
-                        AddOrUpdatePurchaseOrderItem(
-                            po,
-                            bomItem.ComponentId,
-                            materialShortage,
-                            supplier.Price,
-                            salesOrderItem.Id);
-                    }
-                }
+                });
             }
 
-            //  Save Purchase Orders
-            foreach (var po in purchaseOrders.Values)
-                _context.PurchaseOrders.Add(po);
-
-            //  Update totals
             order.TotalAmount = totalAmount;
 
-            Helper.UpdateReservationStatus(order);
-
-            //  Save everything
+            // 3️⃣ Save Sales Order
             await _context.SalesOrders.AddAsync(order);
             await _context.SaveChangesAsync();
 
+            // 4️⃣ Run MRP (PLANNING ONLY)
+            await _mrpService.RunMrpForSalesOrder(order.Id);
+
             await transaction.CommitAsync();
 
-            //  Response DTO
+            // 5️⃣ Response (NO RESERVATION YET)
             var response = new CreateSalesOrderResponseDto
             {
                 OrderId = order.Id,
@@ -194,22 +111,11 @@ public class SalesController : ControllerBase
                 TotalAmount = order.TotalAmount,
 
                 TotalItems = order.Items.Count,
-                ReservedItems = order.Items.Count(i => i.QuantityReserved >= i.QuantityRequested),
-                PendingItems = order.Items.Count(i => i.QuantityReserved < i.QuantityRequested),
+                ReservedItems = 0,
+                PendingItems = order.Items.Count,
 
-                PurchaseOrders = purchaseOrders.Values
-                    .Select(po => new PurchaseOrderSummaryDto
-                    {
-                        SupplierId = po.SupplierId,
-                        TotalItems = po.Items.Count
-                    }).ToList(),
-
-                ProductionOrders = productionOrders
-                    .Select(p => new ProductionOrderSummaryDto
-                    {
-                        ProductId = p.ProductId,
-                        QuantityPlanned = p.PlannedQuantity
-                    }).ToList()
+                IsStockAvailable = false,
+                Message = "Sales Order created. Waiting for stock, purchase, or production."
             };
 
             return Ok(response);
@@ -239,83 +145,30 @@ public class SalesController : ControllerBase
 
             foreach (var item in order.Items)
             {
-                // 1️⃣ Check actual stock in warehouse
+                // 1️⃣ Get stock
                 var stock = await _context.ProductStocks
                     .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
 
-                var availableStock = stock != null ? stock.QuantityAvailable : 0;
-
-                // 2️⃣ Include pending received POs
-                var pendingPOItems = await _context.PurchaseOrderItems
-                    .Include(poi => poi.PurchaseOrder)
-                    .Where(poi => poi.ProductId == item.ProductId &&
-                                  poi.PurchaseOrder.Status != PurchaseOrderStatus.Received)
-                    .OrderBy(poi => poi.PurchaseOrder.OrderDate)
-                    .ToListAsync();
-
-                // Auto-receive pending POs to fulfill this sales order
-                foreach (var poItem in pendingPOItems)
-                {
-                    var poQtyToReceive = poItem.QuantityRequested - poItem.QuantityReceived;
-                    if (poQtyToReceive <= 0)
-                        continue;
-
-                    // Create stock if not exists
-                    if (stock == null)
-                    {
-                        stock = new ProductStock
-                        {
-                            Id = Guid.NewGuid(),
-                            ProductId = item.ProductId,
-                            QuantityAvailable = 0,
-                            QuantityReserved = 0
-                        };
-                        _context.ProductStocks.Add(stock);
-                    }
-
-                    // Receive from PO
-                    stock.QuantityAvailable += poQtyToReceive;
-
-
-                    _context.StockTransactions.Add(new StockTransaction
-                    {
-                        Id = Guid.NewGuid(),
-                        ProductId = item.ProductId,
-                        Quantity = poQtyToReceive,
-                        Type = "RECEIVE",
-                        ReferenceId = poItem.PurchaseOrderId,
-                        Date = DateTime.UtcNow,
-                        PerformedBy = "System",
-                        Notes = $"Auto-received {poQtyToReceive} units from PO {poItem.PurchaseOrder.OrderNumber} to fulfill SO {order.OrderNumber}"
-                    });
-
-                    poItem.QuantityReceived += poQtyToReceive;
-
-                    // If all items in PO are received, mark PO as received
-                    if (poItem.QuantityReceived >= poItem.QuantityRequested)
-                    {
-                        poItem.PurchaseOrder.Status = PurchaseOrderStatus.Received;
-                        poItem.QuantityRequested -= poItem.QuantityRequested;
-                    }
-                }
-
-                // 3️⃣ Recalculate available stock
-                availableStock = stock?.QuantityAvailable ?? 0;
-                var remainingQty = item.QuantityRequested - item.QuantityReserved;
-                if (remainingQty <= 0 || availableStock <= 0)
+                if (stock == null || stock.QuantityAvailable <= 0)
                     continue;
 
-                // 4️⃣ Reserve stock for the sales order
-                var qtyToReserve = Math.Min(remainingQty, availableStock);
+                // 2️⃣ Calculate remaining quantity
+                var remainingQty = item.QuantityRequested - item.QuantityReserved;
+                if (remainingQty <= 0)
+                    continue;
+
+                // 3️⃣ Reserve stock (ONLY from available stock)
+                var qtyToReserve = Math.Min(remainingQty, stock.QuantityAvailable);
+
                 stock.QuantityAvailable -= qtyToReserve;
                 stock.QuantityReserved += qtyToReserve;
+
                 item.QuantityReserved += qtyToReserve;
-                item.QuantityRequested -= qtyToReserve;
 
                 if (item.QuantityReserved > 0)
                     stockAvailable = true;
 
-                // Log stock transaction for reservation
+                // 4️⃣ Log transaction
                 _context.StockTransactions.Add(new StockTransaction
                 {
                     Id = Guid.NewGuid(),
@@ -329,13 +182,13 @@ public class SalesController : ControllerBase
                 });
             }
 
-            // 5️⃣ Update reservation status for sales order
+            // 5️⃣ Update order reservation status
             Helper.UpdateReservationStatus(order);
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            // 6️⃣ Prepare pending purchase orders
+            // 6️⃣ Pending Purchase Orders (DO NOT MODIFY THEM)
             var pendingPurchaseOrders = await _context.PurchaseOrders
                 .Include(po => po.Items)
                 .Where(po => po.Items.Any(i => i.SalesOrderItem.SalesOrderId == order.Id) &&
@@ -350,7 +203,7 @@ public class SalesController : ControllerBase
                     PendingItems = po.Items.Sum(i => i.QuantityRequested - i.QuantityReceived)
                 }).ToListAsync();
 
-            // 7️⃣ Prepare pending production orders
+            // 7️⃣ Pending Production Orders
             var pendingProductionOrders = await _context.ProductionOrders
                 .Where(po => po.SalesOrderItem.SalesOrderId == order.Id &&
                              po.Status != nameof(ProductionStatus.Completed))
@@ -368,7 +221,7 @@ public class SalesController : ControllerBase
                     ActualFinishDate = po.ActualFinishDate
                 }).ToListAsync();
 
-            // 8️⃣ Build response
+            // 8️⃣ Response
             var response = new CreateSalesOrderResponseDto
             {
                 OrderId = order.Id,
@@ -376,13 +229,16 @@ public class SalesController : ControllerBase
                 OrderDate = order.OrderDate,
                 Status = order.Status.ToString(),
                 TotalAmount = order.TotalAmount,
+
                 TotalItems = order.Items.Count,
                 ReservedItems = order.Items.Count(i => i.QuantityReserved >= i.QuantityRequested),
                 PendingItems = order.Items.Count(i => i.QuantityReserved < i.QuantityRequested),
+
                 IsStockAvailable = stockAvailable,
                 Message = stockAvailable
-                    ? "Stock reserved successfully. Pending POs auto-received if needed."
-                    : "Order cannot proceed. Stock is pending from Purchase Order(s).",
+                    ? "Stock reserved successfully."
+                    : "Stock not available. Waiting for Purchase or Production.",
+
                 PurchaseOrders = pendingPurchaseOrders,
                 ProductionOrders = pendingProductionOrders
             };
@@ -395,100 +251,166 @@ public class SalesController : ControllerBase
             return StatusCode(500, ex.Message);
         }
     }
+
+    [HttpPost("run-mrp")]
+    public async Task<IActionResult> RunMrp([FromQuery] Guid salesOrderId)
+    {
+        var order = await _context.SalesOrders
+            .Include(o => o.Items)
+            .ThenInclude(i => i.Product)
+            .FirstOrDefaultAsync(o => o.Id == salesOrderId);
+
+        if (order == null) return NotFound("Sales order not found.");
+
+        var mrpPlans = new List<MrpPlan>();
+
+        foreach (var item in order.Items)
+        {
+            // 1️⃣ Stock in warehouse
+            var stock = await _context.ProductStocks
+                .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
+
+            var availableStock = stock?.QuantityAvailable ?? 0;
+
+            // 2️⃣ Pending receipts from POs
+            var pendingPOQty = await _context.PurchaseOrderItems
+                .Where(poi => poi.ProductId == item.ProductId &&
+                              poi.PurchaseOrder.Status != PurchaseOrderStatus.Received)
+                .SumAsync(poi => poi.QuantityRequested - poi.QuantityReceived);
+
+            var totalAvailable = availableStock + pendingPOQty;
+
+            var netRequirement = item.QuantityRequested - totalAvailable;
+
+            if (netRequirement <= 0) continue; // Stock sufficient
+
+            // 3️⃣ Create MRP plan
+            var plan = new MrpPlan
+            {
+                Id = Guid.NewGuid(),
+                SalesOrderId = order.Id,
+                ProductId = item.ProductId,
+                RequiredQuantity = item.QuantityRequested,
+                AvailableQuantity = totalAvailable,
+                PlannedQuantity = netRequirement,
+                RequiredDate = order.OrderDate.AddDays(1), // example: next day
+                Notes = $"Material needed for Sales Order {order.OrderNumber}"
+            };
+
+            mrpPlans.Add(plan);
+        }
+
+        if (mrpPlans.Any())
+        {
+            await _context.MrpPlans.AddRangeAsync(mrpPlans);
+            await _context.SaveChangesAsync();
+        }
+
+        return Ok(mrpPlans.Select(p => new MrpPlanDto
+        {
+            ProductId = p.ProductId,
+            RequiredQuantity = p.RequiredQuantity,
+            AvailableQuantity = p.AvailableQuantity,
+            PlannedQuantity = p.PlannedQuantity,
+            RequiredDate = p.RequiredDate,
+            Notes = p.Notes
+        }));
+    }
+
     // ================================
     // COMMON METHODS
     // ================================
 
-    private async Task<decimal> ReserveStockAsync(
-     Guid productId,
-     decimal quantity,
-     SalesOrderItem item,
-     Guid orderId,
-     string performedBy)
-    {
-        var stock = await _context.ProductStocks
-            .FirstOrDefaultAsync(s => s.ProductId == productId);
+    //private async Task<decimal> ReserveStockAsync(
+    // Guid productId,
+    // decimal quantity,
+    // SalesOrderItem item,
+    // Guid orderId,
+    // string performedBy)
+    //{
+    //    var stock = await _context.ProductStocks
+    //        .FirstOrDefaultAsync(s => s.ProductId == productId);
 
-        if (stock == null || stock.QuantityAvailable <= 0)
-            return 0;
+    //    if (stock == null || stock.QuantityAvailable <= 0)
+    //        return 0;
 
-        var reservedQty = Math.Min(quantity, stock.QuantityAvailable);
+    //    var reservedQty = Math.Min(quantity, stock.QuantityAvailable);
 
-        stock.QuantityAvailable -= reservedQty;
-        stock.QuantityReserved += reservedQty;
+    //    stock.QuantityAvailable -= reservedQty;
+    //    stock.QuantityReserved += reservedQty;
 
-        item.QuantityReserved = reservedQty;
+    //    item.QuantityReserved = reservedQty;
 
-        _context.StockTransactions.Add(new StockTransaction
-        {
-            Id = Guid.NewGuid(),
-            ProductId = productId,
-            Quantity = reservedQty,
-            Type = "RESERVE",
-            ReferenceId = orderId,
-            Date = DateTime.UtcNow,
-            PerformedBy = performedBy
-        });
+    //    _context.StockTransactions.Add(new StockTransaction
+    //    {
+    //        Id = Guid.NewGuid(),
+    //        ProductId = productId,
+    //        Quantity = reservedQty,
+    //        Type = "RESERVE",
+    //        ReferenceId = orderId,
+    //        Date = DateTime.UtcNow,
+    //        PerformedBy = performedBy
+    //    });
 
-        return reservedQty;
-    }
+    //    return reservedQty;
+    //}
 
-    private async Task<ProductSupplier?> GetPreferredSupplierAsync(Guid productId)
-    {
-        return await _context.ProductSuppliers
-            .Include(ps => ps.Supplier)
-            .Where(ps => ps.ProductId == productId && ps.Supplier.IsActive)
-            .OrderByDescending(ps => ps.IsPreferred)
-            .FirstOrDefaultAsync();
-    }
+    //private async Task<ProductSupplier?> GetPreferredSupplierAsync(Guid productId)
+    //{
+    //    return await _context.ProductSuppliers
+    //        .Include(ps => ps.Supplier)
+    //        .Where(ps => ps.ProductId == productId && ps.Supplier.IsActive)
+    //        .OrderByDescending(ps => ps.IsPreferred)
+    //        .FirstOrDefaultAsync();
+    //}
 
-    private PurchaseOrder GetOrCreatePurchaseOrder(
-        Dictionary<Guid, PurchaseOrder> purchaseOrders,
-        Guid supplierId)
-    {
-        if (!purchaseOrders.ContainsKey(supplierId))
-        {
-            purchaseOrders[supplierId] = new PurchaseOrder
-            {
-                Id = Guid.NewGuid(),
-                OrderNumber = $"AUTO-PO-{DateTime.UtcNow.Ticks}",
-                SupplierId = supplierId,
-                OrderDate = DateTime.UtcNow,
-                Status = PurchaseOrderStatus.Draft,
-                Items = new List<PurchaseOrderItem>()
-            };
-        }
+    //private PurchaseOrder GetOrCreatePurchaseOrder(
+    //    Dictionary<Guid, PurchaseOrder> purchaseOrders,
+    //    Guid supplierId)
+    //{
+    //    if (!purchaseOrders.ContainsKey(supplierId))
+    //    {
+    //        purchaseOrders[supplierId] = new PurchaseOrder
+    //        {
+    //            Id = Guid.NewGuid(),
+    //            OrderNumber = $"AUTO-PO-{DateTime.UtcNow.Ticks}",
+    //            SupplierId = supplierId,
+    //            OrderDate = DateTime.UtcNow,
+    //            Status = PurchaseOrderStatus.Draft,
+    //            Items = new List<PurchaseOrderItem>()
+    //        };
+    //    }
 
-        return purchaseOrders[supplierId];
-    }
+    //    return purchaseOrders[supplierId];
+    //}
 
-    private void AddOrUpdatePurchaseOrderItem(
-        PurchaseOrder po,
-        Guid productId,
-        decimal quantity,
-        decimal price,
-        Guid salesOrderItemId)
-    {
-        var existing = po.Items.FirstOrDefault(x =>
-            x.ProductId == productId &&
-            x.SalesOrderItemId == salesOrderItemId);
+    //private void AddOrUpdatePurchaseOrderItem(
+    //    PurchaseOrder po,
+    //    Guid productId,
+    //    decimal quantity,
+    //    decimal price,
+    //    Guid salesOrderItemId)
+    //{
+    //    var existing = po.Items.FirstOrDefault(x =>
+    //        x.ProductId == productId &&
+    //        x.SalesOrderItemId == salesOrderItemId);
 
-        if (existing != null)
-        {
-            existing.QuantityRequested += quantity;
-            existing.TotalPrice += quantity * existing.UnitPrice;
-        }
-        else
-        {
-            po.Items.Add(new PurchaseOrderItem
-            {
-                Id = Guid.NewGuid(),
-                ProductId = productId,
-                QuantityRequested = quantity,
-                UnitPrice = price,
-                TotalPrice = price * quantity,
-                SalesOrderItemId = salesOrderItemId
-            });
-        }
-    }
+    //    if (existing != null)
+    //    {
+    //        existing.QuantityRequested += quantity;
+    //        existing.TotalPrice += quantity * existing.UnitPrice;
+    //    }
+    //    else
+    //    {
+    //        po.Items.Add(new PurchaseOrderItem
+    //        {
+    //            Id = Guid.NewGuid(),
+    //            ProductId = productId,
+    //            QuantityRequested = quantity,
+    //            UnitPrice = price,
+    //            TotalPrice = price * quantity,
+    //            SalesOrderItemId = salesOrderItemId
+    //        });
+    //    }
+    //}
 }
