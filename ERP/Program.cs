@@ -11,6 +11,7 @@ builder.Services.AddDbContext<ManufacturingDbContext>(options =>
 builder.Services.AddScoped<ProductService>();
 builder.Services.AddScoped<BillOfMaterialService>();
 
+
 // Add services to the container.
 
 builder.Services.AddControllers();
