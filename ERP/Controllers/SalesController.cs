@@ -19,11 +19,15 @@ public class SalesController : ControllerBase
 {
     private readonly ManufacturingDbContext _context;
     private readonly ProductService _productService;
+    private readonly ILogger<SalesController> _logger;
+    private readonly BillOfMaterialService _bomService;
 
-    public SalesController(ManufacturingDbContext context, ProductService productService)
+    public SalesController(ManufacturingDbContext context, ProductService productService, ILogger<SalesController> logger, BillOfMaterialService bomService)
     {
         _context = context;
         _productService = productService;
+        _logger = logger;
+        _bomService = bomService;
     }
 
     // ================================
@@ -94,11 +98,9 @@ public class SalesController : ControllerBase
                 if (shortage <= 0) continue;
 
                 //  Check BOM
-                var bom = await _context.BillOfMaterials
-                    .Include(b => b.Items)
-                    .FirstOrDefaultAsync(b => b.ProductId == item.ProductId);
+                var bomResult = await _bomService.GetBillOfMaterialByProductId(item.ProductId);
 
-                if (bom == null)
+                if (bomResult.Data == null)
                 {
                     //  PURCHASE
                     var supplier = await GetPreferredSupplierAsync(item.ProductId);
@@ -123,7 +125,7 @@ public class SalesController : ControllerBase
                         OrderNumber = $"MO-{DateTime.UtcNow.Ticks}",
 
                         ProductId = item.ProductId,
-                        BillOfMaterialId = bom.Id,
+                        BillOfMaterialId = bomResult.Data.Id,
 
                         PlannedQuantity = shortage,
                         ProducedQuantity = 0,
@@ -140,7 +142,7 @@ public class SalesController : ControllerBase
                     productionOrders.Add(productionOrder);
 
                     //  Handle BOM materials
-                    foreach (var bomItem in bom.Items)
+                    foreach (var bomItem in bomResult.Data.Items)
                     {
                         var requiredQty = bomItem.Quantity * shortage;
 
@@ -218,7 +220,181 @@ public class SalesController : ControllerBase
             return StatusCode(500, ex.Message);
         }
     }
+    [HttpPost("update-sales-order-stock")]
+    public async Task<IActionResult> UpdateSalesOrderStock([FromQuery] Guid salesOrderId)
+    {
+        var order = await _context.SalesOrders
+            .Include(o => o.Items)
+            .ThenInclude(i => i.Product)
+            .FirstOrDefaultAsync(o => o.Id == salesOrderId);
 
+        if (order == null)
+            return NotFound("Sales order not found.");
+
+        using var transaction = await _context.Database.BeginTransactionAsync();
+
+        try
+        {
+            bool stockAvailable = false;
+
+            foreach (var item in order.Items)
+            {
+                // 1️⃣ Check actual stock in warehouse
+                var stock = await _context.ProductStocks
+                    .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
+
+                var availableStock = stock != null ? stock.QuantityAvailable : 0;
+
+                // 2️⃣ Include pending received POs
+                var pendingPOItems = await _context.PurchaseOrderItems
+                    .Include(poi => poi.PurchaseOrder)
+                    .Where(poi => poi.ProductId == item.ProductId &&
+                                  poi.PurchaseOrder.Status != PurchaseOrderStatus.Received)
+                    .OrderBy(poi => poi.PurchaseOrder.OrderDate)
+                    .ToListAsync();
+
+                // Auto-receive pending POs to fulfill this sales order
+                foreach (var poItem in pendingPOItems)
+                {
+                    var poQtyToReceive = poItem.RequestedQuantity - poItem.QuantityReceived;
+                    if (poQtyToReceive <= 0)
+                        continue;
+
+                    // Create stock if not exists
+                    if (stock == null)
+                    {
+                        stock = new ProductStock
+                        {
+                            Id = Guid.NewGuid(),
+                            ProductId = item.ProductId,
+                            QuantityAvailable = 0,
+                            QuantityReserved = 0
+                        };
+                        _context.ProductStocks.Add(stock);
+                    }
+
+                    // Receive from PO
+                    stock.QuantityAvailable += poQtyToReceive;
+
+
+                    _context.StockTransactions.Add(new StockTransaction
+                    {
+                        Id = Guid.NewGuid(),
+                        ProductId = item.ProductId,
+                        Quantity = poQtyToReceive,
+                        Type = "RECEIVE",
+                        ReferenceId = poItem.PurchaseOrderId,
+                        Date = DateTime.UtcNow,
+                        PerformedBy = "System",
+                        Notes = $"Auto-received {poQtyToReceive} units from PO {poItem.PurchaseOrder.OrderNumber} to fulfill SO {order.OrderNumber}"
+                    });
+
+                    poItem.QuantityReceived += poQtyToReceive;
+
+                    // If all items in PO are received, mark PO as received
+                    if (poItem.QuantityReceived >= poItem.RequestedQuantity)
+                    {
+                        poItem.PurchaseOrder.Status = PurchaseOrderStatus.Received;
+                        poItem.RequestedQuantity -= poItem.RequestedQuantity;
+                    }
+                }
+
+                // 3️⃣ Recalculate available stock
+                availableStock = stock?.QuantityAvailable ?? 0;
+                var remainingQty = item.RequestedQuantity - item.ReservedQuantity;
+                if (remainingQty <= 0 || availableStock <= 0)
+                    continue;
+
+                // 4️⃣ Reserve stock for the sales order
+                var qtyToReserve = Math.Min(remainingQty, availableStock);
+                stock.QuantityAvailable -= qtyToReserve;
+                stock.QuantityReserved += qtyToReserve;
+                item.ReservedQuantity += qtyToReserve;
+                item.RequestedQuantity -= qtyToReserve;
+
+                if (item.ReservedQuantity > 0)
+                    stockAvailable = true;
+
+                // Log stock transaction for reservation
+                _context.StockTransactions.Add(new StockTransaction
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = item.ProductId,
+                    Quantity = qtyToReserve,
+                    Type = "RESERVE",
+                    ReferenceId = order.Id,
+                    Date = DateTime.UtcNow,
+                    PerformedBy = "System",
+                    Notes = $"Reserved {qtyToReserve} units for Sales Order {order.OrderNumber}"
+                });
+            }
+
+            // 5️⃣ Update reservation status for sales order
+            Helper.UpdateReservationStatus(order);
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            // 6️⃣ Prepare pending purchase orders
+            var pendingPurchaseOrders = await _context.PurchaseOrders
+                .Include(po => po.Items)
+                .Where(po => po.Items.Any(i => i.SalesOrderItem.SalesOrderId == order.Id) &&
+                             po.Status != PurchaseOrderStatus.Received)
+                .Select(po => new PurchaseOrderSummaryDto
+                {
+                    PurchaseOrderId = po.Id,
+                    SupplierId = po.SupplierId,
+                    OrderNumber = po.OrderNumber,
+                    TotalItems = po.Items.Count,
+                    Status = po.Status.ToString(),
+                    PendingItems = po.Items.Sum(i => i.RequestedQuantity - i.QuantityReceived)
+                }).ToListAsync();
+
+            // 7️⃣ Prepare pending production orders
+            var pendingProductionOrders = await _context.ProductionOrders
+                .Where(po => po.SalesOrderItem.SalesOrderId == order.Id &&
+                             po.Status != nameof(ProductionStatus.Completed))
+                .Select(po => new ProductionOrderSummaryDto
+                {
+                    ProductionOrderId = po.Id,
+                    OrderNumber = po.OrderNumber,
+                    ProductId = po.ProductId,
+                    PlannedQuantity = po.PlannedQuantity,
+                    ProducedQuantity = po.ProducedQuantity,
+                    Status = po.Status,
+                    PlannedStartDate = po.PlannedStartDate,
+                    PlannedFinishDate = po.PlannedFinishDate,
+                    ActualStartDate = po.ActualStartDate,
+                    ActualFinishDate = po.ActualFinishDate
+                }).ToListAsync();
+
+            // 8️⃣ Build response
+            var response = new CreateSalesOrderResponseDto
+            {
+                OrderId = order.Id,
+                OrderNumber = order.OrderNumber,
+                OrderDate = order.OrderDate,
+                Status = order.Status.ToString(),
+                TotalAmount = order.TotalAmount,
+                TotalItems = order.Items.Count,
+                ReservedItems = order.Items.Count(i => i.ReservedQuantity >= i.RequestedQuantity),
+                PendingItems = order.Items.Count(i => i.ReservedQuantity < i.RequestedQuantity),
+                IsStockAvailable = stockAvailable,
+                Message = stockAvailable
+                    ? "Stock reserved successfully. Pending POs auto-received if needed."
+                    : "Order cannot proceed. Stock is pending from Purchase Order(s).",
+                PurchaseOrders = pendingPurchaseOrders,
+                ProductionOrders = pendingProductionOrders
+            };
+
+            return Ok(response);
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(500, ex.Message);
+        }
+    }
     // ================================
     // COMMON METHODS
     // ================================
@@ -299,7 +475,7 @@ public class SalesController : ControllerBase
 
         if (existing != null)
         {
-            existing.Quantity += quantity;
+            existing.RequestedQuantity += quantity;
             existing.TotalPrice += quantity * existing.UnitPrice;
         }
         else
@@ -308,7 +484,7 @@ public class SalesController : ControllerBase
             {
                 Id = Guid.NewGuid(),
                 ProductId = productId,
-                Quantity = quantity,
+                RequestedQuantity = quantity,
                 UnitPrice = price,
                 TotalPrice = price * quantity,
                 SalesOrderItemId = salesOrderItemId

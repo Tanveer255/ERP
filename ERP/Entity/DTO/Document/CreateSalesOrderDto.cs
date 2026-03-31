@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using ERP.Entity.Document;
+using System.ComponentModel.DataAnnotations;
 
 namespace ERP.Entity.DTO.Document;
 
@@ -21,6 +22,8 @@ public class CreateSalesOrderResponseDto
     public DateTime OrderDate { get; set; }
     public string Status { get; set; }
     public decimal TotalAmount { get; set; }
+    public bool IsStockAvailable { get; set; }
+    public string Message { get; set; }
 
     public int TotalItems { get; set; }
     public int ReservedItems { get; set; }
@@ -31,11 +34,23 @@ public class CreateSalesOrderResponseDto
 }
 public class PurchaseOrderSummaryDto
 {
-    public Guid SupplierId { get; set; }
-    public int TotalItems { get; set; }
+    public Guid PurchaseOrderId { get; set; }      // Unique PO ID
+    public string OrderNumber { get; set; }        // PO Number
+    public Guid SupplierId { get; set; }           // Supplier reference
+    public int TotalItems { get; set; }            // Total items in PO
+    public string Status { get; set; }             // Status (e.g., Pending, Received)
+    public decimal PendingItems { get; set; } // Must be decimal
 }
 public class ProductionOrderSummaryDto
 {
-    public Guid ProductId { get; set; }
-    public decimal PlannedQuantity { get; set; }
+    public Guid ProductionOrderId { get; set; }    // Unique MO ID
+    public string OrderNumber { get; set; }        // MO Number
+    public Guid ProductId { get; set; }            // Product being produced
+    public decimal PlannedQuantity { get; set; }   // Planned quantity to produce
+    public decimal ProducedQuantity { get; set; }  // Already produced quantity
+    public string Status { get; set; }             // Current status (Planned, InProgress, Completed)
+    public DateTime PlannedStartDate { get; set; } // Scheduled start
+    public DateTime PlannedFinishDate { get; set; }// Scheduled finish
+    public DateTime? ActualStartDate { get; set; } // Actual start
+    public DateTime? ActualFinishDate { get; set; }// Actual finish
 }

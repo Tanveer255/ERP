@@ -39,7 +39,7 @@ public class PurchaseOrderController : ControllerBase
                 {
                     Id = Guid.NewGuid(),
                     ProductId = item.ProductId,
-                    QuantityAvailable = item.Quantity,
+                    QuantityAvailable = item.RequestedQuantity,
                     QuantityReserved = 0
                 };
                 _context.ProductStocks.Add(stock);
@@ -47,11 +47,11 @@ public class PurchaseOrderController : ControllerBase
             else
             {
                 // update stock
-                stock.QuantityReserved -= item.Quantity;
-                stock.QuantityAvailable += item.Quantity;
+                stock.QuantityReserved -= item.RequestedQuantity;
+                stock.QuantityAvailable += item.RequestedQuantity;
 
                 //update purchase order item quantity
-                item.Quantity -= item.Quantity;
+                item.RequestedQuantity -= item.RequestedQuantity;
             }
 
             // Log the stock transaction
@@ -59,7 +59,7 @@ public class PurchaseOrderController : ControllerBase
             {
                 Id = Guid.NewGuid(),
                 ProductId = item.ProductId,
-                Quantity = item.Quantity,
+                Quantity = item.RequestedQuantity,
                 Type = "RECEIVE",
                 ReferenceId = po.Id,
                 Date = DateTime.UtcNow,
@@ -83,7 +83,7 @@ public class PurchaseOrderController : ControllerBase
             Items = po.Items.Select(i => new
             {
                 i.ProductId,
-                i.Quantity
+                i.RequestedQuantity
             })
         };
 

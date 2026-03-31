@@ -338,7 +338,7 @@ public class ProductionController : ControllerBase
         {
             Id = Guid.NewGuid(),
             ProductId = item.ComponentId,
-            Quantity = shortage,
+            RequestedQuantity = shortage,
             UnitPrice = supplier.Price
         });
     }
