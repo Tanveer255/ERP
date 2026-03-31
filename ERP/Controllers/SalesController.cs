@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using ERP.Entity.Product;
 using ERP.Service;
 using ERP.Entity.Contact;
+using ERP.Service.Product;
 
 namespace ERP.Controllers;
 
@@ -17,10 +18,12 @@ namespace ERP.Controllers;
 public class SalesController : ControllerBase
 {
     private readonly ManufacturingDbContext _context;
+    private readonly ProductService _productService;
 
-    public SalesController(ManufacturingDbContext context)
+    public SalesController(ManufacturingDbContext context, ProductService productService)
     {
         _context = context;
+        _productService = productService;
     }
 
     // ================================
@@ -36,14 +39,12 @@ public class SalesController : ControllerBase
 
         try
         {
-            // 1️⃣ Create new Sales Order
-
             var order = new SalesOrder
             {
                 Id = Guid.NewGuid(),
                 OrderNumber = $"SO-{DateTime.UtcNow.Ticks}",
                 OrderDate = DateTime.UtcNow,
-                Status = SalesOrderStatus.Draft, // ✅ Always start as Draft
+                Status = SalesOrderStatus.Draft,
                 CustomerName = dto.CustomerName,
                 CustomerEmail = dto.CustomerEmail,
                 Items = new List<SalesOrderItem>()
@@ -51,23 +52,24 @@ public class SalesController : ControllerBase
 
             decimal totalAmount = 0;
             var purchaseOrders = new Dictionary<Guid, PurchaseOrder>();
+            var productionOrders = new List<ProductionOrder>();
 
-            // 2️⃣ Process each order item
             foreach (var item in dto.Items)
             {
-                // Fetch product with prices
-                var product = await _context.Products
-                    .Include(p => p.Prices)
-                    .FirstOrDefaultAsync(p => p.Id == item.ProductId);
+                //  Get product
+                var result = await _productService.GetProductById(item.ProductId);
+                if (!result.IsSuccess)
+                    throw new Exception(result.Message);
 
-                if (product == null)
-                    return BadRequest($"Product {item.ProductId} not found.");
+                var product = result.Data;
 
-                var unitPrice = product.Prices.FirstOrDefault()?.SalePrice ?? 0;
+                var unitPrice = product?.Prices?
+                    .OrderByDescending(p => p.Id)
+                    .FirstOrDefault()?.SalePrice ?? 0;
+
                 var totalPrice = unitPrice * item.Quantity;
                 totalAmount += totalPrice;
 
-                // Create SalesOrderItem
                 var salesOrderItem = new SalesOrderItem
                 {
                     Id = Guid.NewGuid(),
@@ -79,7 +81,7 @@ public class SalesController : ControllerBase
 
                 order.Items.Add(salesOrderItem);
 
-                // 3️⃣ Reserve stock if available
+                //  Reserve stock
                 var reservedQty = await ReserveStockAsync(
                     item.ProductId,
                     item.Quantity,
@@ -91,17 +93,17 @@ public class SalesController : ControllerBase
 
                 if (shortage <= 0) continue;
 
-                // 4️⃣ Check for BOM (production) or purchase
+                //  Check BOM
                 var bom = await _context.BillOfMaterials
                     .Include(b => b.Items)
                     .FirstOrDefaultAsync(b => b.ProductId == item.ProductId);
 
                 if (bom == null)
                 {
-                    //  PURCHASE for shortage
+                    //  PURCHASE
                     var supplier = await GetPreferredSupplierAsync(item.ProductId);
                     if (supplier == null)
-                        return BadRequest("No supplier found.");
+                        throw new Exception($"No supplier found for product {item.ProductId}");
 
                     var po = GetOrCreatePurchaseOrder(purchaseOrders, supplier.SupplierId);
 
@@ -114,20 +116,30 @@ public class SalesController : ControllerBase
                 }
                 else
                 {
-                    //  PRODUCTION for shortage
+                    //  PRODUCTION
                     var productionOrder = new ProductionOrder
                     {
                         Id = Guid.NewGuid(),
+                        OrderNumber = $"MO-{DateTime.UtcNow.Ticks}",
+
                         ProductId = item.ProductId,
                         BillOfMaterialId = bom.Id,
+
                         PlannedQuantity = shortage,
+                        ProducedQuantity = 0,
+
                         Status = nameof(ProductionStatus.Planned),
+
+                        PlannedStartDate = DateTime.UtcNow,
+                        PlannedFinishDate = DateTime.UtcNow.AddDays(2),
+
                         SalesOrderItemId = salesOrderItem.Id
                     };
 
                     _context.ProductionOrders.Add(productionOrder);
+                    productionOrders.Add(productionOrder);
 
-                    // Reserve components or create purchase orders for materials
+                    //  Handle BOM materials
                     foreach (var bomItem in bom.Items)
                     {
                         var requiredQty = bomItem.Quantity * shortage;
@@ -155,21 +167,50 @@ public class SalesController : ControllerBase
                 }
             }
 
-            // 5️⃣ Add all generated purchase orders
+            //  Save Purchase Orders
             foreach (var po in purchaseOrders.Values)
                 _context.PurchaseOrders.Add(po);
-            // 6️⃣ Update totals and reservation status
+
+            //  Update totals
             order.TotalAmount = totalAmount;
 
-            // Update reservation only (do not change main order status)
             Helper.UpdateReservationStatus(order);
 
-            // 7️⃣ Save order and commit
+            //  Save everything
             await _context.SalesOrders.AddAsync(order);
             await _context.SaveChangesAsync();
+
             await transaction.CommitAsync();
 
-            return Ok(order);
+            //  Response DTO
+            var response = new CreateSalesOrderResponseDto
+            {
+                OrderId = order.Id,
+                OrderNumber = order.OrderNumber,
+                OrderDate = order.OrderDate,
+                Status = order.Status.ToString(),
+                TotalAmount = order.TotalAmount,
+
+                TotalItems = order.Items.Count,
+                ReservedItems = order.Items.Count(i => i.ReservedQuantity >= i.RequestedQuantity),
+                PendingItems = order.Items.Count(i => i.ReservedQuantity < i.RequestedQuantity),
+
+                PurchaseOrders = purchaseOrders.Values
+                    .Select(po => new PurchaseOrderSummaryDto
+                    {
+                        SupplierId = po.SupplierId,
+                        TotalItems = po.Items.Count
+                    }).ToList(),
+
+                ProductionOrders = productionOrders
+                    .Select(p => new ProductionOrderSummaryDto
+                    {
+                        ProductId = p.ProductId,
+                        PlannedQuantity = p.PlannedQuantity
+                    }).ToList()
+            };
+
+            return Ok(response);
         }
         catch (Exception ex)
         {

@@ -20,7 +20,7 @@ public class ProductionController : ControllerBase
         _context = context;
     }
 
-    #region 🔁 Retry Helper
+    #region Retry Helper
     private async Task<bool> ExecuteWithRetryAsync(Func<Task> action, int maxRetry = 3)
     {
         int retry = maxRetry;
@@ -42,7 +42,7 @@ public class ProductionController : ControllerBase
     }
     #endregion
 
-    #region 🏭 Create Production Order
+    #region Create Production Order
     [HttpPost("create-production-order")]
     public async Task<IActionResult> CreateOrder([FromBody] CreateProductionOrderDto dto)
     {
@@ -95,7 +95,7 @@ public class ProductionController : ControllerBase
     }
     #endregion
 
-    #region 📦 Issue Materials
+    #region  Issue Materials
     [HttpPost("issue-material")]
     public async Task<IActionResult> IssueMaterials(Guid orderId)
     {
@@ -150,7 +150,7 @@ public class ProductionController : ControllerBase
     }
     #endregion
 
-    #region ▶️ Start Production
+    #region Start Production
     [HttpPost("start-production")]
     public async Task<IActionResult> StartProduction(Guid orderId)
     {
@@ -182,7 +182,7 @@ public class ProductionController : ControllerBase
     }
     #endregion
 
-    #region 🔄 Advance Production
+    #region  Advance Production
     [HttpPost("advance-production")]
     public async Task<IActionResult> AdvanceProduction(Guid orderId)
     {
@@ -213,7 +213,7 @@ public class ProductionController : ControllerBase
     }
     #endregion
 
-    #region ✅ Complete Production
+    #region  Complete Production
     [HttpPost("complete-production")]
     public async Task<IActionResult> CompleteProduction(Guid orderId)
     {
@@ -261,7 +261,7 @@ public class ProductionController : ControllerBase
     }
     #endregion
 
-    #region 🧩 Private Methods
+    #region Private Methods
 
     private async Task<ProductionOrder> CreateProductionOrderAsync(CreateProductionOrderDto dto, BillOfMaterial bom)
     {
