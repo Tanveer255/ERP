@@ -26,15 +26,16 @@ public class MrpService
         if (order == null)
             throw new Exception("Sales Order not found");
 
+        //  Store POs by Supplier
+        var purchaseOrdersMap = new Dictionary<Guid, PurchaseOrder>();
+
         foreach (var item in order.Items)
         {
-            // 1️⃣ Check available stock
             var stock = await _context.ProductStocks
                 .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
 
             var availableStock = stock?.QuantityAvailable ?? 0;
 
-            // 2️⃣ Incoming stock from open POs
             var incomingPOQty = await _context.PurchaseOrderItems
                 .Include(p => p.PurchaseOrder)
                 .Where(p => p.ProductId == item.ProductId &&
@@ -43,26 +44,23 @@ public class MrpService
 
             var totalAvailable = availableStock + incomingPOQty;
 
-            // 3️⃣ Calculate shortage
             var shortage = item.QuantityRequested - totalAvailable;
-            if (shortage <= 0) continue; // enough stock
+            if (shortage <= 0) continue;
 
-            // 4️⃣ Avoid duplicate planning
             var alreadyPlanned = await _context.PurchaseOrderItems
                 .AnyAsync(p => p.ProductId == item.ProductId && p.SalesOrderItemId == item.Id);
+
             var alreadyPlannedMO = await _context.ProductionOrders
                 .AnyAsync(p => p.ProductId == item.ProductId && p.SalesOrderItemId == item.Id);
 
             if (alreadyPlanned || alreadyPlannedMO) continue;
 
-            // 5️⃣ Check BOM
             var bom = await _context.BillOfMaterials
                 .Include(b => b.Items)
                 .FirstOrDefaultAsync(b => b.ProductId == item.ProductId);
 
             if (bom != null)
             {
-                // ✔ Create Production Order
                 var productionOrder = new ProductionOrder
                 {
                     Id = Guid.NewGuid(),
@@ -76,9 +74,9 @@ public class MrpService
                     PlannedFinishDate = DateTime.UtcNow.AddDays(2),
                     SalesOrderItemId = item.Id
                 };
+
                 _context.ProductionOrders.Add(productionOrder);
 
-                // Plan raw materials recursively
                 foreach (var bomItem in bom.Items)
                 {
                     var requiredQty = bomItem.Quantity * shortage;
@@ -87,21 +85,28 @@ public class MrpService
             }
             else
             {
-                // ✔ Create Purchase Order automatically
                 var supplier = await GetPreferredSupplierAsync(item.ProductId);
                 if (supplier == null)
                     throw new Exception($"No supplier found for product {item.ProductId}");
 
-                var po = new PurchaseOrder
+                //  Reuse PO if exists
+                if (!purchaseOrdersMap.TryGetValue(supplier.SupplierId, out var po))
                 {
-                    Id = Guid.NewGuid(),
-                    OrderNumber = $"AUTO-PO-{DateTime.UtcNow.Ticks}",
-                    SupplierId = supplier.SupplierId,
-                    Status = PurchaseOrderStatus.Draft,
-                    OrderDate = DateTime.UtcNow,
-                    Items = new List<PurchaseOrderItem>()
-                };
+                    po = new PurchaseOrder
+                    {
+                        Id = Guid.NewGuid(),
+                        OrderNumber = $"AUTO-PO-{DateTime.UtcNow.Ticks}",
+                        SupplierId = supplier.SupplierId,
+                        Status = PurchaseOrderStatus.Draft,
+                        OrderDate = DateTime.UtcNow,
+                        Items = new List<PurchaseOrderItem>()
+                    };
 
+                    purchaseOrdersMap[supplier.SupplierId] = po;
+                    _context.PurchaseOrders.Add(po);
+                }
+
+                //  Add item to existing PO
                 po.Items.Add(new PurchaseOrderItem
                 {
                     Id = Guid.NewGuid(),
@@ -110,15 +115,13 @@ public class MrpService
                     QuantityReceived = 0,
                     SalesOrderItemId = item.Id
                 });
-
-                _context.PurchaseOrders.Add(po);
             }
         }
 
         await _context.SaveChangesAsync();
     }
 
-    // 🔁 Recursive Material Planning
+    //  Recursive Material Planning
     private async Task PlanMaterialRequirement(Guid productId, decimal requiredQty, Guid salesOrderItemId)
     {
         var stock = await _context.ProductStocks
