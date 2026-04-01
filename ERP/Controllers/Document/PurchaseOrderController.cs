@@ -2,6 +2,7 @@
 using ERP.Entity;
 using ERP.Entity.Product;
 using ERP.Enum;
+using ERP.Service.Document;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,22 +14,22 @@ namespace ERP.Controllers.Document;
 public class PurchaseOrderController : ControllerBase
 {
     private readonly ManufacturingDbContext _context;
-    public PurchaseOrderController(ManufacturingDbContext context)
+    private readonly PurchaseOrderService _purchaseOrderService;
+    public PurchaseOrderController(ManufacturingDbContext context, PurchaseOrderService purchaseOrderService)
     {
         _context = context;
+        _purchaseOrderService = purchaseOrderService;
     }
 
     [HttpPost("receive-purchase-order")]
     public async Task<IActionResult> ReceivePurchaseOrder([FromQuery] Guid purchaseOrderId)
     {
-        var po = await _context.PurchaseOrders
-            .Include(p => p.Items)
-            .FirstOrDefaultAsync(p => p.Id == purchaseOrderId);
+        var po = await _purchaseOrderService.GetPurchaseOrderByIdAsync(purchaseOrderId);
 
-        if (po == null)
-            return NotFound(new { Message = "Purchase order not found." });
+        if (!po.IsSuccess)
+            return NotFound(po.Message);
 
-        foreach (var item in po.Items)
+        foreach (var item in po.Data.Items)
         {
             var stock = await _context.ProductStocks
                 .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
@@ -52,6 +53,7 @@ public class PurchaseOrderController : ControllerBase
 
                 //update purchase order item quantity
                 item.QuantityRequested -= item.QuantityRequested;
+                item.QuantityReceived += item.QuantityRequested;
             }
 
             // Log the stock transaction
@@ -61,29 +63,29 @@ public class PurchaseOrderController : ControllerBase
                 ProductId = item.ProductId,
                 Quantity = item.QuantityRequested,
                 Type = "RECEIVE",
-                ReferenceId = po.Id,
+                ReferenceId = po.Data.Id,
                 Date = DateTime.UtcNow,
                 PerformedBy = "System",
-                Notes = $"Received from Purchase Order {po.OrderNumber}"
+                Notes = $"Received from Purchase Order {po.Data.OrderNumber}"
             });
         }
 
         // Update PO status
-        po.Status = PurchaseOrderStatus.Received;
+        po.Data.Status = PurchaseOrderStatus.Received;
 
         await _context.SaveChangesAsync();
 
         // Return updated PO info
         var result = new
         {
-            po.Id,
-            po.OrderNumber,
-            po.Status,
+            po.Data.Id,
+            po.Data.OrderNumber,
+            po.Data.Status,
             ReceivedDate = DateTime.UtcNow,
-            Items = po.Items.Select(i => new
+            Items = po.Data.Items.Select(i => new
             {
                 i.ProductId,
-                i.QuantityRequested
+                i.QuantityReceived
             })
         };
 

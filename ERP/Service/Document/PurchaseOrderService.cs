@@ -1,6 +1,7 @@
 ﻿using ERP.Data;
 using ERP.Entity;
 using ERP.Entity.Document;
+using ERP.Entity.DTO;
 using ERP.Entity.Product;
 using ERP.Enum;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +14,31 @@ public class PurchaseOrderService
     public PurchaseOrderService(ManufacturingDbContext manufacturingDbContext)
     {
        _context = manufacturingDbContext;
+    }
+
+    public async Task<PurchaseOrder> CreatePurchaseOrder(Guid supplierId, List<PurchaseOrderItem> items)
+    {
+        var po = new PurchaseOrder
+        {
+            Id = Guid.NewGuid(),
+            OrderNumber = $"PO-{Guid.NewGuid():N8}",
+            SupplierId = supplierId,
+            OrderDate = DateTime.UtcNow,
+            Status = PurchaseOrderStatus.Draft,
+            Items = items
+        };
+        _context.PurchaseOrders.Add(po);
+        await _context.SaveChangesAsync();
+        return po;
+    }
+    public async Task<ResultDTO<PurchaseOrder>> GetPurchaseOrderByIdAsync(Guid purchaseOrderId)
+    {
+        var result =  await _context.PurchaseOrders
+            .Include(po => po.Items)
+            .FirstOrDefaultAsync(po => po.Id == purchaseOrderId);
+        if (result == null) 
+            return ResultDTO<PurchaseOrder>.Failure("Purchase order not found");
+        return ResultDTO<PurchaseOrder>.Success(result);
     }
     public async Task ReserveStockAndCreatePOs(ProductionOrder order, BillOfMaterial bom, Dictionary<Guid, PurchaseOrder> supplierOrders)
     {
