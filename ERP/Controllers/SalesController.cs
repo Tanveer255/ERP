@@ -234,10 +234,9 @@ public class SalesController : ControllerBase
                 ReservedItems = order.Items.Count(i => i.QuantityReserved >= i.QuantityRequested),
                 PendingItems = order.Items.Count(i => i.QuantityReserved < i.QuantityRequested),
 
-                IsStockAvailable = stockAvailable,
-                Message = stockAvailable
-                    ? "Stock reserved successfully."
-                    : "Stock not available. Waiting for Purchase or Production.",
+                IsStockAvailable = order.Status == SalesOrderStatus.Completed,
+
+                Message = Helper.GetSalesOrderMessage(order), 
 
                 PurchaseOrders = pendingPurchaseOrders,
                 ProductionOrders = pendingProductionOrders
@@ -316,101 +315,4 @@ public class SalesController : ControllerBase
             Notes = p.Notes
         }));
     }
-
-    // ================================
-    // COMMON METHODS
-    // ================================
-
-    //private async Task<decimal> ReserveStockAsync(
-    // Guid productId,
-    // decimal quantity,
-    // SalesOrderItem item,
-    // Guid orderId,
-    // string performedBy)
-    //{
-    //    var stock = await _context.ProductStocks
-    //        .FirstOrDefaultAsync(s => s.ProductId == productId);
-
-    //    if (stock == null || stock.QuantityAvailable <= 0)
-    //        return 0;
-
-    //    var reservedQty = Math.Min(quantity, stock.QuantityAvailable);
-
-    //    stock.QuantityAvailable -= reservedQty;
-    //    stock.QuantityReserved += reservedQty;
-
-    //    item.QuantityReserved = reservedQty;
-
-    //    _context.StockTransactions.Add(new StockTransaction
-    //    {
-    //        Id = Guid.NewGuid(),
-    //        ProductId = productId,
-    //        Quantity = reservedQty,
-    //        Type = "RESERVE",
-    //        ReferenceId = orderId,
-    //        Date = DateTime.UtcNow,
-    //        PerformedBy = performedBy
-    //    });
-
-    //    return reservedQty;
-    //}
-
-    //private async Task<ProductSupplier?> GetPreferredSupplierAsync(Guid productId)
-    //{
-    //    return await _context.ProductSuppliers
-    //        .Include(ps => ps.Supplier)
-    //        .Where(ps => ps.ProductId == productId && ps.Supplier.IsActive)
-    //        .OrderByDescending(ps => ps.IsPreferred)
-    //        .FirstOrDefaultAsync();
-    //}
-
-    //private PurchaseOrder GetOrCreatePurchaseOrder(
-    //    Dictionary<Guid, PurchaseOrder> purchaseOrders,
-    //    Guid supplierId)
-    //{
-    //    if (!purchaseOrders.ContainsKey(supplierId))
-    //    {
-    //        purchaseOrders[supplierId] = new PurchaseOrder
-    //        {
-    //            Id = Guid.NewGuid(),
-    //            OrderNumber = $"AUTO-PO-{DateTime.UtcNow.Ticks}",
-    //            SupplierId = supplierId,
-    //            OrderDate = DateTime.UtcNow,
-    //            Status = PurchaseOrderStatus.Draft,
-    //            Items = new List<PurchaseOrderItem>()
-    //        };
-    //    }
-
-    //    return purchaseOrders[supplierId];
-    //}
-
-    //private void AddOrUpdatePurchaseOrderItem(
-    //    PurchaseOrder po,
-    //    Guid productId,
-    //    decimal quantity,
-    //    decimal price,
-    //    Guid salesOrderItemId)
-    //{
-    //    var existing = po.Items.FirstOrDefault(x =>
-    //        x.ProductId == productId &&
-    //        x.SalesOrderItemId == salesOrderItemId);
-
-    //    if (existing != null)
-    //    {
-    //        existing.QuantityRequested += quantity;
-    //        existing.TotalPrice += quantity * existing.UnitPrice;
-    //    }
-    //    else
-    //    {
-    //        po.Items.Add(new PurchaseOrderItem
-    //        {
-    //            Id = Guid.NewGuid(),
-    //            ProductId = productId,
-    //            QuantityRequested = quantity,
-    //            UnitPrice = price,
-    //            TotalPrice = price * quantity,
-    //            SalesOrderItemId = salesOrderItemId
-    //        });
-    //    }
-    //}
 }

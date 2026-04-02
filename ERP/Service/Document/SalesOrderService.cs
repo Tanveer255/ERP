@@ -12,51 +12,35 @@ public class SalesOrderService
     {
         _context = context;
     }
-
-    public async Task AutoReserveStock(Guid productId)
+    public async Task UpdateSalesOrderStock(Guid salesOrderId)
     {
-        // Get all pending SO items for this product
-        var items = await _context.SalesOrderItems
-            .Include(i => i.SalesOrder)
-            .Where(i =>
-                i.ProductId == productId &&
-                i.QuantityRequested > i.QuantityReserved)
-            .OrderBy(i => i.SalesOrder.OrderDate) // FIFO
-            .ToListAsync();
+        var order = await _context.SalesOrders
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Id == salesOrderId);
 
-        var stock = await _context.ProductStocks
-            .FirstOrDefaultAsync(s => s.ProductId == productId);
+        if (order == null) return;
 
-        if (stock == null || stock.QuantityAvailable <= 0)
-            return;
-
-        foreach (var item in items)
+        foreach (var item in order.Items)
         {
-            var remaining = item.QuantityRequested - item.QuantityReserved;
-            if (remaining <= 0) continue;
+            var stock = await _context.ProductStocks
+                .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
 
-            var qty = Math.Min(remaining, stock.QuantityAvailable);
+            if (stock == null || stock.QuantityAvailable <= 0)
+                continue;
 
-            stock.QuantityAvailable -= qty;
-            stock.QuantityReserved += qty;
+            var remainingQty = item.QuantityRequested - item.QuantityReserved;
+            if (remainingQty <= 0)
+                continue;
 
-            item.QuantityReserved += qty;
+            var qtyToReserve = Math.Min(remainingQty, stock.QuantityAvailable);
 
-            _context.StockTransactions.Add(new StockTransaction
-            {
-                Id = Guid.NewGuid(),
-                ProductId = productId,
-                Quantity = qty,
-                Type = "AUTO-RESERVE",
-                ReferenceId = item.SalesOrderId,
-                Date = DateTime.UtcNow,
-                PerformedBy = "SYSTEM",
-                Notes = "Auto reserved after stock arrival"
-            });
+            stock.QuantityAvailable -= qtyToReserve;
+            stock.QuantityReserved += qtyToReserve;
 
-            if (stock.QuantityAvailable <= 0)
-                break;
+            item.QuantityReserved += qtyToReserve;
         }
+
+        Helper.UpdateReservationStatus(order);
 
         await _context.SaveChangesAsync();
     }

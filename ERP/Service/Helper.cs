@@ -44,7 +44,10 @@ public static class Helper
         }
 
         else
+        {
             order.ReservationStatus = ReservationStatus.None;
+            order.Status = SalesOrderStatus.Pending;
+        }
     }
     public static async Task<bool> ExecuteWithRetryAsync(Func<Task> action, int maxRetry = 3)
     {
@@ -64,5 +67,15 @@ public static class Helper
             }
         }
         return false;
+    }
+    public static string GetSalesOrderMessage(SalesOrder order)
+    {
+        return order.Status switch
+        {
+            SalesOrderStatus.Completed => "All items reserved successfully. Order is ready.",
+            SalesOrderStatus.PartiallyReserved => "Some items reserved. Remaining items are pending for Purchase or Production.",
+            SalesOrderStatus.Pending => "Stock not available. Waiting for Purchase or Production.",
+            _ => "Order processed."
+        };
     }
 }

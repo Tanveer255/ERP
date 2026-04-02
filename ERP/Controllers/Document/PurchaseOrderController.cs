@@ -15,10 +15,16 @@ public class PurchaseOrderController : ControllerBase
 {
     private readonly ManufacturingDbContext _context;
     private readonly PurchaseOrderService _purchaseOrderService;
-    public PurchaseOrderController(ManufacturingDbContext context, PurchaseOrderService purchaseOrderService)
+    private readonly SalesOrderService _salesOrderService;
+    public PurchaseOrderController(
+        ManufacturingDbContext context,
+        PurchaseOrderService purchaseOrderService,
+        SalesOrderService salesOrderService
+        )
     {
         _context = context;
         _purchaseOrderService = purchaseOrderService;
+        _salesOrderService = salesOrderService;
     }
 
     [HttpPost("receive-purchase-order")]
@@ -74,6 +80,7 @@ public class PurchaseOrderController : ControllerBase
         po.Data.Status = PurchaseOrderStatus.Received;
 
         await _context.SaveChangesAsync();
+        //_salesOrderService.UpdateSalesOrderStock(po.Data.Id).Wait();
 
         // Return updated PO info
         var result = new

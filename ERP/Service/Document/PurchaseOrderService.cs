@@ -15,22 +15,6 @@ public class PurchaseOrderService
     {
        _context = manufacturingDbContext;
     }
-
-    public async Task<PurchaseOrder> CreatePurchaseOrder(Guid supplierId, List<PurchaseOrderItem> items)
-    {
-        var po = new PurchaseOrder
-        {
-            Id = Guid.NewGuid(),
-            OrderNumber = $"PO-{Guid.NewGuid():N8}",
-            SupplierId = supplierId,
-            OrderDate = DateTime.UtcNow,
-            Status = PurchaseOrderStatus.Draft,
-            Items = items
-        };
-        _context.PurchaseOrders.Add(po);
-        await _context.SaveChangesAsync();
-        return po;
-    }
     public async Task<ResultDTO<PurchaseOrder>> GetPurchaseOrderByIdAsync(Guid purchaseOrderId)
     {
         var result =  await _context.PurchaseOrders
@@ -40,20 +24,31 @@ public class PurchaseOrderService
             return ResultDTO<PurchaseOrder>.Failure("Purchase order not found");
         return ResultDTO<PurchaseOrder>.Success(result);
     }
-    public async Task ReserveStockAndCreatePOs(ProductionOrder order, BillOfMaterial bom, Dictionary<Guid, PurchaseOrder> supplierOrders)
+    public async Task ReceivePurchaseOrder(Guid purchaseOrderId)
     {
-        foreach (var item in bom.Items)
+        var po = await _context.PurchaseOrders
+            .Include(p => p.Items)
+            .ThenInclude(i => i.SalesOrderItem)
+            .FirstOrDefaultAsync(p => p.Id == purchaseOrderId);
+
+        foreach (var item in po.Items)
         {
-            var requiredQty = item.Quantity * order.PlannedQuantity;
-            var stock = await GetStock(item.ComponentId);
+            // 1️⃣ Add stock
+            var stock = await _context.ProductStocks
+                .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
 
-            var reserved = Math.Min(stock.QuantityAvailable, requiredQty);
-            await AdjustStock(order.Id, item.ComponentId, reserved, StockTransactionType.RESERVE);
+            stock.QuantityAvailable += item.ReceivedQuantity;
 
-            var shortage = requiredQty - reserved;
-            if (shortage > 0)
-                await HandleSupplier(item, shortage, supplierOrders);
+            // 2️⃣ 🔥 TRIGGER SALES ORDER UPDATE
+            if (item.SalesOrderItem != null)
+            {
+                await _salesOrderService.UpdateSalesOrderStock(
+                    item.SalesOrderItem.SalesOrderId
+                );
+            }
         }
+
+        await _context.SaveChangesAsync();
     }
     private async Task<ProductStock> GetStock(Guid productId)
     {
