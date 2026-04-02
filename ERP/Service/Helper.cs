@@ -28,24 +28,33 @@ public static class Helper
 
         return priceAfterDiscount + tax;
     }
-    public static void UpdateReservationStatus(SalesOrder order)
+    public static void UpdateSalesOrderStatus(SalesOrder order)
     {
+        // 1. Reservation Status (unchanged logic)
         if (order.Items.All(i => i.QuantityReserved == i.QuantityRequested))
         {
             order.ReservationStatus = ReservationStatus.Full;
-            order.Status = SalesOrderStatus.Completed;
         }
-
         else if (order.Items.Any(i => i.QuantityReserved > 0))
         {
             order.ReservationStatus = ReservationStatus.Partial;
-            order.Status = SalesOrderStatus.PartiallyReserved;
-
         }
-
         else
         {
             order.ReservationStatus = ReservationStatus.None;
+        }
+
+        // 2. Fulfillment-based Order Status (NEW LOGIC)
+        if (order.Items.All(i => i.QuantityFulfilled == i.QuantityRequested))
+        {
+            order.Status = SalesOrderStatus.Completed;
+        }
+        else if (order.Items.Any(i => i.QuantityFulfilled > 0))
+        {
+            order.Status = SalesOrderStatus.Partial;
+        }
+        else
+        {
             order.Status = SalesOrderStatus.Pending;
         }
     }
@@ -73,7 +82,7 @@ public static class Helper
         return order.Status switch
         {
             SalesOrderStatus.Completed => "All items reserved successfully. Order is ready.",
-            SalesOrderStatus.PartiallyReserved => "Some items reserved. Remaining items are pending for Purchase or Production.",
+            SalesOrderStatus.Partial => "Some items reserved. Remaining items are pending for Purchase or Production.",
             SalesOrderStatus.Pending => "Stock not available. Waiting for Purchase or Production.",
             _ => "Order processed."
         };

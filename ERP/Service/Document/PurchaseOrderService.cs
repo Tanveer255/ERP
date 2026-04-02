@@ -11,9 +11,11 @@ namespace ERP.Service.Document;
 public class PurchaseOrderService
 {
     private readonly ManufacturingDbContext _context;
-    public PurchaseOrderService(ManufacturingDbContext manufacturingDbContext)
+    private readonly SalesOrderService _salesOrderService;
+    public PurchaseOrderService(ManufacturingDbContext manufacturingDbContext,SalesOrderService salesOrderService)
     {
        _context = manufacturingDbContext;
+         _salesOrderService = salesOrderService;
     }
     public async Task<ResultDTO<PurchaseOrder>> GetPurchaseOrderByIdAsync(Guid purchaseOrderId)
     {
@@ -37,7 +39,7 @@ public class PurchaseOrderService
             var stock = await _context.ProductStocks
                 .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
 
-            stock.QuantityAvailable += item.ReceivedQuantity;
+            stock.QuantityAvailable += item.QuantityReceived;
 
             // 2️⃣ 🔥 TRIGGER SALES ORDER UPDATE
             if (item.SalesOrderItem != null)

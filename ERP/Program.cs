@@ -12,6 +12,7 @@ builder.Services.AddDbContext<ManufacturingDbContext>(options =>
 builder.Services.AddScoped<ProductService>();
 builder.Services.AddScoped<BillOfMaterialService>();
 builder.Services.AddScoped<MrpService>();
+builder.Services.AddScoped<SalesOrderService>();
 builder.Services.AddScoped<PurchaseOrderService>();
 
 

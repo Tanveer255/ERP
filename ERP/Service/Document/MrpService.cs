@@ -2,6 +2,7 @@
 using ERP.Entity;
 using ERP.Entity.Contact;
 using ERP.Entity.Document;
+using ERP.Entity.Product;
 using ERP.Enum;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -26,7 +27,7 @@ public class MrpService
         if (order == null)
             throw new Exception("Sales Order not found");
 
-        //  Store POs by Supplier
+        // Store POs grouped by supplier
         var purchaseOrdersMap = new Dictionary<Guid, PurchaseOrder>();
 
         foreach (var item in order.Items)
@@ -42,19 +43,50 @@ public class MrpService
                             p.PurchaseOrder.Status != PurchaseOrderStatus.Received)
                 .SumAsync(p => p.QuantityRequested - p.QuantityReceived);
 
-            var totalAvailable = availableStock + incomingPOQty;
+            // 🔹 Reserve available stock first
+            var remainingQty = item.QuantityRequested - item.QuantityReserved;
+            if (remainingQty <= 0)
+                continue;
 
-            var shortage = item.QuantityRequested - totalAvailable;
-            if (shortage <= 0) continue;
+            if (availableStock > 0)
+            {
+                var reserveQty = Math.Min(remainingQty, availableStock);
 
+                stock.QuantityAvailable -= reserveQty;
+                stock.QuantityReserved += reserveQty;
+
+                item.QuantityReserved += reserveQty;
+
+                // Optional: log reservation
+                _context.StockTransactions.Add(new StockTransaction
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = item.ProductId,
+                    Quantity = reserveQty,
+                    Type = "RESERVE",
+                    ReferenceId = order.Id,
+                    Date = DateTime.UtcNow,
+                    Notes = $"Reserved for Sales Order {order.OrderNumber}"
+                });
+
+                remainingQty -= reserveQty;
+            }
+
+            // 🔹 Check shortage after reservation and incoming POs
+            var shortage = remainingQty - incomingPOQty;
+            if (shortage <= 0)
+                continue;
+
+            // 🔹 Skip if already planned
             var alreadyPlanned = await _context.PurchaseOrderItems
                 .AnyAsync(p => p.ProductId == item.ProductId && p.SalesOrderItemId == item.Id);
-
             var alreadyPlannedMO = await _context.ProductionOrders
                 .AnyAsync(p => p.ProductId == item.ProductId && p.SalesOrderItemId == item.Id);
 
-            if (alreadyPlanned || alreadyPlannedMO) continue;
+            if (alreadyPlanned || alreadyPlannedMO)
+                continue;
 
+            // 🔹 Check BOM for production
             var bom = await _context.BillOfMaterials
                 .Include(b => b.Items)
                 .FirstOrDefaultAsync(b => b.ProductId == item.ProductId);
@@ -77,6 +109,7 @@ public class MrpService
 
                 _context.ProductionOrders.Add(productionOrder);
 
+                // Plan raw materials recursively
                 foreach (var bomItem in bom.Items)
                 {
                     var requiredQty = bomItem.Quantity * shortage;
@@ -85,11 +118,12 @@ public class MrpService
             }
             else
             {
+                // 🔹 No BOM → create PO
                 var supplier = await GetPreferredSupplierAsync(item.ProductId);
                 if (supplier == null)
                     throw new Exception($"No supplier found for product {item.ProductId}");
 
-                //  Reuse PO if exists
+                // Reuse PO if exists
                 if (!purchaseOrdersMap.TryGetValue(supplier.SupplierId, out var po))
                 {
                     po = new PurchaseOrder
@@ -97,7 +131,7 @@ public class MrpService
                         Id = Guid.NewGuid(),
                         OrderNumber = $"AUTO-PO-{DateTime.UtcNow.Ticks}",
                         SupplierId = supplier.SupplierId,
-                        Status = PurchaseOrderStatus.Draft,
+                        Status = PurchaseOrderStatus.Pending,
                         OrderDate = DateTime.UtcNow,
                         Items = new List<PurchaseOrderItem>()
                     };
@@ -106,7 +140,6 @@ public class MrpService
                     _context.PurchaseOrders.Add(po);
                 }
 
-                //  Add item to existing PO
                 po.Items.Add(new PurchaseOrderItem
                 {
                     Id = Guid.NewGuid(),
@@ -117,6 +150,9 @@ public class MrpService
                 });
             }
         }
+
+        //  Update Sales Order status based on reserved & fulfilled
+        Helper.UpdateSalesOrderStatus(order);
 
         await _context.SaveChangesAsync();
     }
@@ -191,7 +227,7 @@ public class MrpService
         }
     }
 
-    private async Task<ProductSupplier> GetPreferredSupplierAsync(Guid productId)
+    private async Task<ProductSupplier?> GetPreferredSupplierAsync(Guid productId)
     {
         return await _context.ProductSuppliers
             .Where(s => s.ProductId == productId)

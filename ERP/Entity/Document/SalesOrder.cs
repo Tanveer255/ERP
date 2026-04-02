@@ -15,10 +15,17 @@ public class SalesOrder
 
     public decimal TotalAmount { get; set; }
 
-    // Customer Info (simple for now)
+    // Customer Info
     public string CustomerName { get; set; }
     public string? CustomerEmail { get; set; }
 
+    //  NEW: Track fulfillment summary
+    public int TotalQuantity { get; set; }
+    public int TotalFulfilledQuantity { get; set; }
+
+    //  NEW: Optional link to Purchase Order (if 1 PO per SO)
+    public Guid? PurchaseOrderId { get; set; }
+
     // Navigation
-    public ICollection<SalesOrderItem> Items { get; set; }
+    public ICollection<SalesOrderItem> Items { get; set; } = new List<SalesOrderItem>();
 }

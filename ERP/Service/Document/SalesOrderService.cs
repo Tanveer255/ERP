@@ -40,7 +40,7 @@ public class SalesOrderService
             item.QuantityReserved += qtyToReserve;
         }
 
-        Helper.UpdateReservationStatus(order);
+        Helper.UpdateSalesOrderStatus(order);
 
         await _context.SaveChangesAsync();
     }

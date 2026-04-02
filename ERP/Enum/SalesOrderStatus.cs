@@ -16,7 +16,7 @@ public enum SalesOrderStatus
     Processing = 3,
     // System is fulfilling the order (stock reservation / production / purchase)
 
-    PartiallyReserved = 4,
+    Partial = 4,
     // Some items reserved from stock, but not fully available
 
     FullyReserved = 5,

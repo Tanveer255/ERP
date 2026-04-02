@@ -20,16 +20,20 @@ public class ProductionController : ControllerBase
     private readonly ProductionOrderService _productionOrderService;
     private readonly PurchaseOrderService _purchaseOrderService;
     private readonly ProductionOperationService _productionOperationService;
+    private readonly MrpService _mrpService;
 
     public ProductionController(ManufacturingDbContext context,
         ProductionOrderService productionOrderService,
         PurchaseOrderService purchaseOrderService,
-        ProductionOperationService productionOperationService)
+        ProductionOperationService productionOperationService,
+        MrpService mrpService
+        )
     {
         _context = context;
         _productionOrderService = productionOrderService;
         _purchaseOrderService = purchaseOrderService;
         _productionOperationService = productionOperationService;
+        _mrpService = mrpService;
     }
 
     #region Create Production Order
@@ -61,7 +65,7 @@ public class ProductionController : ControllerBase
 
             var supplierOrders = new Dictionary<Guid, PurchaseOrder>();
 
-            await _purchaseOrderService.ReserveStockAndCreatePOs(order, bom, supplierOrders);
+            await _mrpService.RunMrpForSalesOrder(order.Id);
 
             _context.PurchaseOrders.AddRange(supplierOrders.Values);
 
