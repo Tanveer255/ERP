@@ -48,7 +48,7 @@ public class PurchaseOrderController : ControllerBase
             else
             {
                 // update stock
-                stock.QuantityReserved -= item.QuantityRequested;
+                //stock.QuantityReserved -= item.QuantityRequested;
                 stock.QuantityAvailable += item.QuantityRequested;
 
                 //update purchase order item quantity

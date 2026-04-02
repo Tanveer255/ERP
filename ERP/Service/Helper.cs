@@ -31,10 +31,17 @@ public static class Helper
     public static void UpdateReservationStatus(SalesOrder order)
     {
         if (order.Items.All(i => i.QuantityReserved == i.QuantityRequested))
+        {
             order.ReservationStatus = ReservationStatus.Full;
+            order.Status = SalesOrderStatus.Completed;
+        }
 
         else if (order.Items.Any(i => i.QuantityReserved > 0))
+        {
             order.ReservationStatus = ReservationStatus.Partial;
+            order.Status = SalesOrderStatus.PartiallyReserved;
+
+        }
 
         else
             order.ReservationStatus = ReservationStatus.None;
