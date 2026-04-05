@@ -156,12 +156,14 @@ public class SalesController : ControllerBase
                         Type = "RESERVE",
                         ReferenceId = order.Id,
                         Date = DateTime.UtcNow,
+                        PerformedBy = "System",
                         Notes = $"Reserved for SO {order.OrderNumber}"
                     });
                 }
 
                 //  STEP 2: FULFILL STOCK
                 var fulfillRemaining = item.QuantityReserved - item.QuantityFulfilled;
+                item.QuantityRequested -= item.QuantityRequested;
 
                 if (fulfillRemaining > 0)
                 {
