@@ -57,6 +57,28 @@ public static class Helper
         {
             order.Status = SalesOrderStatus.Pending;
         }
+
+    }
+    public static void UpdateSalesOrderItemsStatus(SalesOrder order)
+    {
+        if (order == null || order.Items == null || !order.Items.Any())
+            return;
+
+        foreach (var item in order.Items)
+        {
+            if (item.QuantityFulfilled >= item.QuantityRequested)
+            {
+                item.Status = "Completed";
+            }
+            else if (item.QuantityFulfilled > 0)
+            {
+                item.Status = "Partial";
+            }
+            else
+            {
+                item.Status = "Pending";
+            }
+        }
     }
     public static async Task<bool> ExecuteWithRetryAsync(Func<Task> action, int maxRetry = 3)
     {

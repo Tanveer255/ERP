@@ -20,8 +20,8 @@ public class SalesOrder
     public string? CustomerEmail { get; set; }
 
     //  NEW: Track fulfillment summary
-    public int TotalQuantity { get; set; }
-    public int TotalFulfilledQuantity { get; set; }
+    public decimal TotalQuantity { get; set; }
+    public decimal TotalFulfilledQuantity { get; set; }
 
     //  NEW: Optional link to Purchase Order (if 1 PO per SO)
     public Guid? PurchaseOrderId { get; set; }

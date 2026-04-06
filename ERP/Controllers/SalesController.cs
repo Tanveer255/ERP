@@ -238,6 +238,95 @@ public class SalesController : ControllerBase
             return StatusCode(500, ex.Message);
         }
     }
+    [HttpPost("ship-sales-order")]
+    public async Task<IActionResult> ShipSalesOrder([FromQuery] Guid salesOrderId)
+    {
+        using var transaction = await _context.Database.BeginTransactionAsync();
+
+        try
+        {
+            var order = await _context.SalesOrders
+                .Include(o => o.Items)
+                .FirstOrDefaultAsync(o => o.Id == salesOrderId);
+
+            if (order == null)
+                return NotFound("Sales Order not found");
+
+            foreach (var item in order.Items)
+            {
+                var stock = await _context.ProductStocks
+                    .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
+
+                if (stock == null)
+                    continue;
+
+                // 🔹 Remaining quantity to ship
+                var remainingToShip = item.QuantityRequested - item.QuantityFulfilled;
+                if (remainingToShip <= 0)
+                    continue;
+
+                // 🔹 Only ship from RESERVED stock
+                var availableToShip = item.QuantityReserved;
+                if (availableToShip <= 0)
+                    continue;
+
+                var shipQty = Math.Min(remainingToShip, availableToShip);
+
+                // ✅ Deduct from reserved stock
+                stock.QuantityReserved -= shipQty;
+
+                // ✅ Update SO item
+                item.QuantityFulfilled += shipQty;
+                item.QuantityReserved -= shipQty; // Make sure reserved is updated
+
+                //  Log transaction
+                _context.StockTransactions.Add(new StockTransaction
+                {
+                    Id = Guid.NewGuid(),
+                    ProductId = item.ProductId,
+                    Quantity = shipQty,
+                    Type = "SHIP",
+                    ReferenceId = order.Id,
+                    Date = DateTime.UtcNow,
+                    PerformedBy = "System",
+                    Notes = $"Shipped for SO {order.OrderNumber}"
+                });
+            }
+
+            // 🔹 Update total quantities
+            order.TotalQuantity = order.Items.Sum(i => i.QuantityRequested);
+            order.TotalFulfilledQuantity = order.Items.Sum(i => i.QuantityFulfilled);
+
+            // 🔹 Update item statuses **first**
+            Helper.UpdateSalesOrderItemsStatus(order);
+
+            // 🔹 Update overall Sales Order status
+            Helper.UpdateSalesOrderStatus(order);
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return Ok(new
+            {
+                order.Id,
+                order.OrderNumber,
+                Status = order.Status.ToString(),
+                Items = order.Items.Select(i => new
+                {
+                    i.ProductId,
+                    i.QuantityRequested,
+                    i.QuantityReserved,
+                    i.QuantityFulfilled,
+                    i.Status
+                })
+            });
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(500, ex.Message);
+        }
+    }
 
     [HttpPost("run-mrp")]
     public async Task<IActionResult> RunMrp([FromQuery] Guid salesOrderId)
