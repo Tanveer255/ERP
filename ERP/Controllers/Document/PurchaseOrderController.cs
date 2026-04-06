@@ -31,26 +31,34 @@ public class PurchaseOrderController : ControllerBase
     [HttpPost("receive-purchase-order")]
     public async Task<IActionResult> ReceivePurchaseOrder([FromQuery] Guid purchaseOrderId)
     {
-        var po = await _purchaseOrderService.GetPurchaseOrderByIdAsync(purchaseOrderId);
+        var poResult = await _purchaseOrderService.GetPurchaseOrderByIdAsync(purchaseOrderId);
 
-        if (!po.IsSuccess)
-            return NotFound(po.Message);
+        if (!poResult.IsSuccess)
+            return NotFound(poResult.Message);
+
+        var po = poResult.Data;
 
         using var transaction = await _context.Database.BeginTransactionAsync();
 
         try
         {
-            //  Load SalesOrderItems via PO Items
             var salesOrderIds = new HashSet<Guid>();
 
-            foreach (var item in po.Data.Items)
+            foreach (var item in po.Items)
             {
-                var receivedQty = item.QuantityRequested;
+                // =========================
+                //  FIX 1: CALCULATE PENDING QTY
+                // =========================
+                var pendingQty = item.QuantityRequested - item.QuantityReceived;
 
-                if (receivedQty <= 0)
-                    continue;
+                if (pendingQty <= 0)
+                    continue; // already fully received → skip
 
-                //  1. UPDATE STOCK
+                var receivedQty = pendingQty; // full receive (can be partial later)
+
+                // =========================
+                // 1️⃣ UPDATE STOCK
+                // =========================
                 var stock = await _context.ProductStocks
                     .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
 
@@ -70,11 +78,14 @@ public class PurchaseOrderController : ControllerBase
                     stock.QuantityAvailable += receivedQty;
                 }
 
-                //  2. UPDATE PO ITEM
+                // =========================
+                // 2️⃣ UPDATE PO ITEM
+                // =========================
                 item.QuantityReceived += receivedQty;
-                item.QuantityRequested = 0;
 
-                //  3. UPDATE LINKED SALES ORDER ITEM (CRITICAL)
+                // =========================
+                // 3️⃣ UPDATE SALES ORDER ITEM
+                // =========================
                 if (item.SalesOrderItemId != Guid.Empty)
                 {
                     var soItem = await _context.SalesOrderItems
@@ -84,39 +95,60 @@ public class PurchaseOrderController : ControllerBase
                     if (soItem != null)
                     {
                         var remainingQty = soItem.QuantityRequested - soItem.QuantityFulfilled;
-                        var fulfillQty = Math.Min(receivedQty, remainingQty);
 
-                        soItem.QuantityFulfilled += fulfillQty;
+                        if (remainingQty > 0)
+                        {
+                            var fulfillQty = Math.Min(receivedQty, remainingQty);
 
-                        // Track SalesOrderId for later status update
-                        salesOrderIds.Add(soItem.SalesOrderId);
+                            soItem.QuantityFulfilled += fulfillQty;
 
-                        // 🔥 ITEM STATUS
-                        if (soItem.QuantityFulfilled == soItem.QuantityRequested)
+                            // reduce receivedQty (safe allocation)
+                            receivedQty -= fulfillQty;
+
+                            salesOrderIds.Add(soItem.SalesOrderId);
+                        }
+
+                        // =========================
+                        // 🔥 FIXED ITEM STATUS
+                        // =========================
+                        if (soItem.QuantityFulfilled >= soItem.QuantityRequested)
                             soItem.Status = "Completed";
-                        else
+                        else if (soItem.QuantityFulfilled > 0)
                             soItem.Status = "Partial";
+                        else
+                            soItem.Status = "Pending";
                     }
                 }
 
-                //  4. LOG STOCK TRANSACTION (FIXED)
+                // =========================
+                // 4️⃣ STOCK TRANSACTION LOG
+                // =========================
                 _context.StockTransactions.Add(new StockTransaction
                 {
                     Id = Guid.NewGuid(),
                     ProductId = item.ProductId,
-                    Quantity = receivedQty, // ✅ FIXED
+                    Quantity = receivedQty,
                     Type = "RECEIVE",
-                    ReferenceId = po.Data.Id,
+                    ReferenceId = po.Id,
                     Date = DateTime.UtcNow,
                     PerformedBy = "System",
-                    Notes = $"Received from PO {po.Data.OrderNumber}"
+                    Notes = $"Received from PO {po.OrderNumber}"
                 });
             }
 
-            //  5. UPDATE PURCHASE ORDER STATUS
-            po.Data.Status = PurchaseOrderStatus.Received;
+            // =========================
+            // 5️⃣ UPDATE PO STATUS
+            // =========================
+            if (po.Items.All(i => i.QuantityReceived >= i.QuantityRequested))
+                po.Status = PurchaseOrderStatus.Received;
+            else
+                po.Status = PurchaseOrderStatus.PartiallyReceived;
 
-            //  6. UPDATE LINKED SALES ORDERS (IMPORTANT)
+            po.ExpectedDate = DateTime.UtcNow;
+
+            // =========================
+            // 6️⃣ UPDATE SALES ORDERS
+            // =========================
             if (salesOrderIds.Any())
             {
                 var salesOrders = await _context.SalesOrders
@@ -127,6 +159,7 @@ public class PurchaseOrderController : ControllerBase
                 foreach (var so in salesOrders)
                 {
                     Helper.UpdateSalesOrderStatus(so);
+                    _context.SalesOrders.Update(so);
                 }
             }
 
@@ -135,13 +168,14 @@ public class PurchaseOrderController : ControllerBase
 
             return Ok(new
             {
-                po.Data.Id,
-                po.Data.OrderNumber,
-                Status = po.Data.Status.ToString(),
+                po.Id,
+                po.OrderNumber,
+                Status = po.Status.ToString(),
                 ReceivedDate = DateTime.UtcNow,
-                Items = po.Data.Items.Select(i => new
+                Items = po.Items.Select(i => new
                 {
                     i.ProductId,
+                    i.QuantityRequested,
                     i.QuantityReceived
                 })
             });

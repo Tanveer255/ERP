@@ -66,6 +66,7 @@ public class MrpService
                     Type = "RESERVE",
                     ReferenceId = order.Id,
                     Date = DateTime.UtcNow,
+                    PerformedBy = "System",
                     Notes = $"Reserved for Sales Order {order.OrderNumber}"
                 });
 
