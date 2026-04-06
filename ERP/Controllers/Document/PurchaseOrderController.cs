@@ -47,14 +47,14 @@ public class PurchaseOrderController : ControllerBase
 
             foreach (var item in po.Data.Items)
             {
-                // ✅ Calculate only remaining quantity to receive
+                // ✅ Remaining qty to receive (DELTA SAFE)
                 var remainingToReceive = item.QuantityRequested - item.QuantityReceived;
                 if (remainingToReceive <= 0)
                     continue;
 
                 var newReceivedQty = remainingToReceive;
 
-                // 1️⃣ Update ProductStock
+                // 1️⃣ Get or create stock
                 var stock = await _context.ProductStocks
                     .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
 
@@ -64,21 +64,19 @@ public class PurchaseOrderController : ControllerBase
                     {
                         Id = Guid.NewGuid(),
                         ProductId = item.ProductId,
-                        QuantityAvailable = newReceivedQty,
+                        QuantityAvailable = 0,
                         QuantityReserved = 0
                     };
                     _context.ProductStocks.Add(stock);
                 }
-                else
-                {
-                    stock.QuantityAvailable += newReceivedQty;
-                }
+
+                // ✅ Add to available stock
+                stock.QuantityAvailable += newReceivedQty;
 
                 // 2️⃣ Update PO item
                 item.QuantityReceived += newReceivedQty;
-                item.QuantityRequested = Math.Max(0, item.QuantityRequested - newReceivedQty);
 
-                // 3️⃣ Update linked Sales Order item
+                // 3️⃣ Handle linked Sales Order
                 if (item.SalesOrderItemId != Guid.Empty)
                 {
                     var soItem = await _context.SalesOrderItems
@@ -87,17 +85,34 @@ public class PurchaseOrderController : ControllerBase
 
                     if (soItem != null)
                     {
-                        var remainingQty = soItem.QuantityRequested - soItem.QuantityFulfilled;
-                        var fulfillQty = Math.Min(newReceivedQty, remainingQty);
+                        // 🔹 STEP A: Reserve stock first
+                        var reserveRemaining = soItem.QuantityRequested - soItem.QuantityReserved;
 
-                        soItem.QuantityFulfilled += fulfillQty;
+                        if (reserveRemaining > 0)
+                        {
+                            var reserveQty = Math.Min(stock.QuantityAvailable, reserveRemaining);
 
-                        // Track SalesOrderId for MRP & status update
+                            stock.QuantityAvailable -= reserveQty;
+                            stock.QuantityReserved += reserveQty;
+
+                            soItem.QuantityReserved += reserveQty;
+                        }
+
+                        // 🔹 STEP B: Fulfill from reserved stock
+                        var fulfillRemaining = soItem.QuantityRequested - soItem.QuantityFulfilled;
+
+                        if (fulfillRemaining > 0)
+                        {
+                            var fulfillQty = Math.Min(soItem.QuantityReserved - soItem.QuantityFulfilled, fulfillRemaining);
+
+                            soItem.QuantityFulfilled += fulfillQty;
+                        }
+
                         salesOrderIds.Add(soItem.SalesOrderId);
                     }
                 }
 
-                // 4️⃣ Log stock transaction
+                // 4️⃣ Stock transaction log
                 _context.StockTransactions.Add(new StockTransaction
                 {
                     Id = Guid.NewGuid(),
@@ -117,7 +132,7 @@ public class PurchaseOrderController : ControllerBase
 
             await _context.SaveChangesAsync();
 
-            // 6️⃣ Update linked Sales Orders via MRP
+            // 6️⃣ Run MRP (important for other pending SOs)
             if (salesOrderIds.Any())
             {
                 foreach (var soId in salesOrderIds)
@@ -133,12 +148,7 @@ public class PurchaseOrderController : ControllerBase
                 po.Data.Id,
                 po.Data.OrderNumber,
                 Status = po.Data.Status.ToString(),
-                ReceivedDate = DateTime.UtcNow,
-                Items = po.Data.Items.Select(i => new
-                {
-                    i.ProductId,
-                    i.QuantityReceived
-                })
+                ReceivedDate = DateTime.UtcNow
             });
         }
         catch (Exception ex)
