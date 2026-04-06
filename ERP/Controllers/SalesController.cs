@@ -260,31 +260,37 @@ public class SalesController : ControllerBase
                 if (stock == null)
                     continue;
 
-                // 🔹 Remaining quantity to ship
-                var remainingToShip = item.QuantityRequested - item.QuantityFulfilled;
+                // Remaining quantity to ship
+                var remainingToShip = item.QuantityRequested;
                 if (remainingToShip <= 0)
                     continue;
 
-                // 🔹 Only ship from RESERVED stock
+                // Only ship from RESERVED stock
                 var availableToShip = item.QuantityReserved;
                 if (availableToShip <= 0)
                     continue;
 
                 var shipQty = Math.Min(remainingToShip, availableToShip);
 
-                // ✅ Deduct from reserved stock
+                // ✅ Deduct from ProductStock reserved quantity
                 stock.QuantityReserved -= shipQty;
+                _context.ProductStocks.Update(stock); // Ensure EF tracks the change
 
-                // ✅ Update SO item
+                // ✅ Update SO item quantities
                 item.QuantityFulfilled += shipQty;
-                item.QuantityReserved -= shipQty; // Make sure reserved is updated
+                item.QuantityReserved -= shipQty;
 
-                //  Log transaction
+                // Optional: calculate item status immediately
+                item.Status = item.QuantityFulfilled >= item.QuantityRequested ? "Completed"
+                             : item.QuantityFulfilled > 0 ? "Partial"
+                             : "Pending";
+
+                // ✅ Log stock transaction
                 _context.StockTransactions.Add(new StockTransaction
                 {
                     Id = Guid.NewGuid(),
                     ProductId = item.ProductId,
-                    Quantity = shipQty,
+                    Quantity = -shipQty,
                     Type = "SHIP",
                     ReferenceId = order.Id,
                     Date = DateTime.UtcNow,
@@ -293,14 +299,14 @@ public class SalesController : ControllerBase
                 });
             }
 
-            // 🔹 Update total quantities
+            // Update total quantities at order level
             order.TotalQuantity = order.Items.Sum(i => i.QuantityRequested);
             order.TotalFulfilledQuantity = order.Items.Sum(i => i.QuantityFulfilled);
 
-            // 🔹 Update item statuses **first**
+            // Update item statuses
             Helper.UpdateSalesOrderItemsStatus(order);
 
-            // 🔹 Update overall Sales Order status
+            // Update overall Sales Order status
             Helper.UpdateSalesOrderStatus(order);
 
             await _context.SaveChangesAsync();
