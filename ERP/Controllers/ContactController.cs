@@ -1,6 +1,6 @@
 ﻿using ERP.Data;
+using ERP.Data.DTO.Contact;
 using ERP.Entity.Contact;
-using ERP.Entity.DTO.Contact;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;

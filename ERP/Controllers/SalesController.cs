@@ -1,9 +1,9 @@
 ﻿using ERP.Data;
+using ERP.Data.DTO;
+using ERP.Data.DTO.Document;
 using ERP.Entity;
 using ERP.Entity.Contact;
 using ERP.Entity.Document;
-using ERP.Entity.DTO;
-using ERP.Entity.DTO.Document;
 using ERP.Entity.Product;
 using ERP.Enum;
 using ERP.Service;

@@ -1,4 +1,4 @@
-﻿namespace ERP.Entity.DTO.Contact;
+﻿namespace ERP.Data.DTO.Contact;
 
 public class CreateSupplierDto
 {

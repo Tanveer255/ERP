@@ -1,7 +1,7 @@
 ﻿using ERP.Data;
+using ERP.Data.DTO;
 using ERP.Entity;
 using ERP.Entity.Document;
-using ERP.Entity.DTO;
 using ERP.Entity.Product;
 using ERP.Enum;
 using Microsoft.EntityFrameworkCore;

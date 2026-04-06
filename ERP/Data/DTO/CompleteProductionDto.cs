@@ -1,4 +1,4 @@
-﻿namespace ERP.Entity.DTO;
+﻿namespace ERP.Data.DTO;
 
 public class CompleteProductionDto
 {

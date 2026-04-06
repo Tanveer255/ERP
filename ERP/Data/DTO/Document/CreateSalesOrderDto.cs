@@ -1,7 +1,7 @@
 ﻿using ERP.Entity.Document;
 using System.ComponentModel.DataAnnotations;
 
-namespace ERP.Entity.DTO.Document;
+namespace ERP.Data.DTO.Document;
 
 public class CreateSalesOrderDto
 {

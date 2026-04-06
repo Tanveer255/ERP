@@ -1,6 +1,6 @@
 ﻿using ERP.Enum;
 
-namespace ERP.Entity.DTO.Document;
+namespace ERP.Data.DTO.Document;
 
 public class SalesOrderResponseDto
 {

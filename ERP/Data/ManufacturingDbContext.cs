@@ -2,6 +2,7 @@
 using ERP.Entity.Contact;
 using ERP.Entity.Document;
 using ERP.Entity.Product;
+using ERP.Entity.Settings;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
 using System.Text.Json;
@@ -34,6 +35,7 @@ public class ManufacturingDbContext : DbContext
     public DbSet<SalesOrder> SalesOrders { get; set; }
     public DbSet<SalesOrderItem> SalesOrderItems { get; set; }
     public DbSet<MrpPlan> MrpPlans { get; set; }
+    public DbSet<InventorySettings> InventorySettings { get; set; }
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
