@@ -83,8 +83,8 @@ public class SalesController : ControllerBase
                     ProductId = item.ProductId,
                     QuantityRequested = item.QuantityRequested,
                     QuantityReserved = 0,
-                    QuantityFulfilled = 0, 
-                    Status = "Pending", 
+                    QuantityFulfilled = 0,
+                    Status = nameof(SalesOrderStatus.Pending),
                     UnitPrice = unitPrice,
                     TotalPrice = totalPrice
                 });
@@ -95,16 +95,17 @@ public class SalesController : ControllerBase
             await _context.SalesOrders.AddAsync(order);
             await _context.SaveChangesAsync();
 
+            // Trigger MRP (creates PO if needed)
             await _mrpService.RunMrpForSalesOrder(order.Id);
 
             await transaction.CommitAsync();
 
-            return Ok(new CreateSalesOrderResponseDto
+            return Ok(new
             {
-                OrderId = order.Id,
-                OrderNumber = order.OrderNumber,
+                order.Id,
+                order.OrderNumber,
                 Status = order.Status.ToString(),
-                TotalAmount = order.TotalAmount,
+                order.TotalAmount,
                 Message = "Sales Order created. Waiting for stock."
             });
         }
@@ -114,6 +115,7 @@ public class SalesController : ControllerBase
             return StatusCode(500, ex.Message);
         }
     }
+
     [HttpPost("update-sales-order-stock")]
     public async Task<IActionResult> UpdateSalesOrderStock([FromQuery] Guid salesOrderId)
     {
@@ -136,7 +138,9 @@ public class SalesController : ControllerBase
                 if (stock == null)
                     continue;
 
-                //  STEP 1: RESERVE STOCK
+                // =========================
+                // 1️⃣ RESERVE (ONLY REMAINING)
+                // =========================
                 var reserveRemaining = item.QuantityRequested - item.QuantityReserved;
 
                 if (reserveRemaining > 0 && stock.QuantityAvailable > 0)
@@ -161,15 +165,25 @@ public class SalesController : ControllerBase
                     });
                 }
 
-                //  STEP 2: FULFILL STOCK
+                // =========================
+                // 2️⃣ FULFILL (FROM RESERVED ONLY)
+                // =========================
                 var fulfillRemaining = item.QuantityReserved - item.QuantityFulfilled;
-                item.QuantityRequested -= item.QuantityRequested;
 
                 if (fulfillRemaining > 0)
                 {
                     var fulfillQty = fulfillRemaining;
 
                     item.QuantityFulfilled += fulfillQty;
+
+                    // 🔥 CRITICAL FIX: RELEASE RESERVED
+                    item.QuantityReserved -= fulfillQty;
+                    if (item.QuantityReserved < 0)
+                        item.QuantityReserved = 0;
+
+                    stock.QuantityReserved -= fulfillQty;
+                    if (stock.QuantityReserved < 0)
+                        stock.QuantityReserved = 0;
 
                     _context.StockTransactions.Add(new StockTransaction
                     {
@@ -179,12 +193,15 @@ public class SalesController : ControllerBase
                         Type = "FULFILL",
                         ReferenceId = order.Id,
                         Date = DateTime.UtcNow,
+                        PerformedBy = "System",
                         Notes = $"Fulfilled for SO {order.OrderNumber}"
                     });
                 }
 
-                //  STEP 3: ITEM STATUS (keep this at item level)
-                if (item.QuantityFulfilled == item.QuantityRequested)
+                // =========================
+                // 3️⃣ ITEM STATUS
+                // =========================
+                if (item.QuantityFulfilled >= item.QuantityRequested)
                     item.Status = "Completed";
                 else if (item.QuantityFulfilled > 0)
                     item.Status = "Partial";
@@ -192,7 +209,9 @@ public class SalesController : ControllerBase
                     item.Status = "Pending";
             }
 
-            //  🔥 CENTRALIZED STATUS LOGIC
+            // =========================
+            // 4️⃣ ORDER STATUS (CENTRALIZED)
+            // =========================
             Helper.UpdateSalesOrderStatus(order);
 
             await _context.SaveChangesAsync();
@@ -203,7 +222,6 @@ public class SalesController : ControllerBase
                 order.Id,
                 order.OrderNumber,
                 OrderStatus = order.Status.ToString(),
-                ReservationStatus = order.ReservationStatus.ToString(), 
                 Items = order.Items.Select(i => new
                 {
                     i.ProductId,

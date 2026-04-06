@@ -17,26 +17,27 @@ public class PurchaseOrderController : ControllerBase
     private readonly ManufacturingDbContext _context;
     private readonly PurchaseOrderService _purchaseOrderService;
     private readonly SalesOrderService _salesOrderService;
+    private readonly MrpService _mrpService;
     public PurchaseOrderController(
         ManufacturingDbContext context,
         PurchaseOrderService purchaseOrderService,
-        SalesOrderService salesOrderService
+        SalesOrderService salesOrderService,
+        MrpService mrpService
         )
     {
         _context = context;
         _purchaseOrderService = purchaseOrderService;
         _salesOrderService = salesOrderService;
+        _mrpService = mrpService;
     }
 
     [HttpPost("receive-purchase-order")]
     public async Task<IActionResult> ReceivePurchaseOrder([FromQuery] Guid purchaseOrderId)
     {
-        var poResult = await _purchaseOrderService.GetPurchaseOrderByIdAsync(purchaseOrderId);
+        var po = await _purchaseOrderService.GetPurchaseOrderByIdAsync(purchaseOrderId);
 
-        if (!poResult.IsSuccess)
-            return NotFound(poResult.Message);
-
-        var po = poResult.Data;
+        if (!po.IsSuccess)
+            return NotFound(po.Message);
 
         using var transaction = await _context.Database.BeginTransactionAsync();
 
@@ -44,21 +45,16 @@ public class PurchaseOrderController : ControllerBase
         {
             var salesOrderIds = new HashSet<Guid>();
 
-            foreach (var item in po.Items)
+            foreach (var item in po.Data.Items)
             {
-                // =========================
-                //  FIX 1: CALCULATE PENDING QTY
-                // =========================
-                var pendingQty = item.QuantityRequested - item.QuantityReceived;
+                // ✅ Calculate only remaining quantity to receive
+                var remainingToReceive = item.QuantityRequested - item.QuantityReceived;
+                if (remainingToReceive <= 0)
+                    continue;
 
-                if (pendingQty <= 0)
-                    continue; // already fully received → skip
+                var newReceivedQty = remainingToReceive;
 
-                var receivedQty = pendingQty; // full receive (can be partial later)
-
-                // =========================
-                // 1️⃣ UPDATE STOCK
-                // =========================
+                // 1️⃣ Update ProductStock
                 var stock = await _context.ProductStocks
                     .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
 
@@ -68,24 +64,21 @@ public class PurchaseOrderController : ControllerBase
                     {
                         Id = Guid.NewGuid(),
                         ProductId = item.ProductId,
-                        QuantityAvailable = receivedQty,
+                        QuantityAvailable = newReceivedQty,
                         QuantityReserved = 0
                     };
                     _context.ProductStocks.Add(stock);
                 }
                 else
                 {
-                    stock.QuantityAvailable += receivedQty;
+                    stock.QuantityAvailable += newReceivedQty;
                 }
 
-                // =========================
-                // 2️⃣ UPDATE PO ITEM
-                // =========================
-                item.QuantityReceived += receivedQty;
+                // 2️⃣ Update PO item
+                item.QuantityReceived += newReceivedQty;
+                item.QuantityRequested = Math.Max(0, item.QuantityRequested - newReceivedQty);
 
-                // =========================
-                // 3️⃣ UPDATE SALES ORDER ITEM
-                // =========================
+                // 3️⃣ Update linked Sales Order item
                 if (item.SalesOrderItemId != Guid.Empty)
                 {
                     var soItem = await _context.SalesOrderItems
@@ -95,87 +88,55 @@ public class PurchaseOrderController : ControllerBase
                     if (soItem != null)
                     {
                         var remainingQty = soItem.QuantityRequested - soItem.QuantityFulfilled;
+                        var fulfillQty = Math.Min(newReceivedQty, remainingQty);
 
-                        if (remainingQty > 0)
-                        {
-                            var fulfillQty = Math.Min(receivedQty, remainingQty);
+                        soItem.QuantityFulfilled += fulfillQty;
 
-                            soItem.QuantityFulfilled += fulfillQty;
-
-                            // reduce receivedQty (safe allocation)
-                            receivedQty -= fulfillQty;
-
-                            salesOrderIds.Add(soItem.SalesOrderId);
-                        }
-
-                        // =========================
-                        // 🔥 FIXED ITEM STATUS
-                        // =========================
-                        if (soItem.QuantityFulfilled >= soItem.QuantityRequested)
-                            soItem.Status = "Completed";
-                        else if (soItem.QuantityFulfilled > 0)
-                            soItem.Status = "Partial";
-                        else
-                            soItem.Status = "Pending";
+                        // Track SalesOrderId for MRP & status update
+                        salesOrderIds.Add(soItem.SalesOrderId);
                     }
                 }
 
-                // =========================
-                // 4️⃣ STOCK TRANSACTION LOG
-                // =========================
+                // 4️⃣ Log stock transaction
                 _context.StockTransactions.Add(new StockTransaction
                 {
                     Id = Guid.NewGuid(),
                     ProductId = item.ProductId,
-                    Quantity = receivedQty,
+                    Quantity = newReceivedQty,
                     Type = "RECEIVE",
-                    ReferenceId = po.Id,
+                    ReferenceId = po.Data.Id,
                     Date = DateTime.UtcNow,
                     PerformedBy = "System",
-                    Notes = $"Received from PO {po.OrderNumber}"
+                    Notes = $"Received from PO {po.Data.OrderNumber}"
                 });
             }
 
-            // =========================
-            // 5️⃣ UPDATE PO STATUS
-            // =========================
-            if (po.Items.All(i => i.QuantityReceived >= i.QuantityRequested))
-                po.Status = PurchaseOrderStatus.Received;
-            else
-                po.Status = PurchaseOrderStatus.PartiallyReceived;
+            // 5️⃣ Update PO status
+            po.Data.Status = PurchaseOrderStatus.Received;
+            po.Data.ExpectedDate = DateTime.UtcNow;
 
-            po.ExpectedDate = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
 
-            // =========================
-            // 6️⃣ UPDATE SALES ORDERS
-            // =========================
+            // 6️⃣ Update linked Sales Orders via MRP
             if (salesOrderIds.Any())
             {
-                var salesOrders = await _context.SalesOrders
-                    .Include(o => o.Items)
-                    .Where(o => salesOrderIds.Contains(o.Id))
-                    .ToListAsync();
-
-                foreach (var so in salesOrders)
+                foreach (var soId in salesOrderIds)
                 {
-                    Helper.UpdateSalesOrderStatus(so);
-                    _context.SalesOrders.Update(so);
+                    await _mrpService.RunMrpForSalesOrder(soId);
                 }
             }
 
-            await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
             return Ok(new
             {
-                po.Id,
-                po.OrderNumber,
-                Status = po.Status.ToString(),
+                po.Data.Id,
+                po.Data.OrderNumber,
+                Status = po.Data.Status.ToString(),
                 ReceivedDate = DateTime.UtcNow,
-                Items = po.Items.Select(i => new
+                Items = po.Data.Items.Select(i => new
                 {
                     i.ProductId,
-                    i.QuantityRequested,
                     i.QuantityReceived
                 })
             });

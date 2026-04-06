@@ -27,7 +27,6 @@ public class MrpService
         if (order == null)
             throw new Exception("Sales Order not found");
 
-        // Store POs grouped by supplier
         var purchaseOrdersMap = new Dictionary<Guid, PurchaseOrder>();
 
         foreach (var item in order.Items)
@@ -43,21 +42,18 @@ public class MrpService
                             p.PurchaseOrder.Status != PurchaseOrderStatus.Received)
                 .SumAsync(p => p.QuantityRequested - p.QuantityReceived);
 
-            // 🔹 Reserve available stock first
-            var remainingQty = item.QuantityRequested - item.QuantityReserved;
-            if (remainingQty <= 0)
-                continue;
+            var remainingQty = item.QuantityRequested - item.QuantityFulfilled - item.QuantityReserved;
+            if (remainingQty <= 0) continue;
 
+            // 🔹 Reserve stock
             if (availableStock > 0)
             {
                 var reserveQty = Math.Min(remainingQty, availableStock);
 
                 stock.QuantityAvailable -= reserveQty;
                 stock.QuantityReserved += reserveQty;
-
                 item.QuantityReserved += reserveQty;
 
-                // Optional: log reservation
                 _context.StockTransactions.Add(new StockTransaction
                 {
                     Id = Guid.NewGuid(),
@@ -70,24 +66,41 @@ public class MrpService
                     Notes = $"Reserved for Sales Order {order.OrderNumber}"
                 });
 
+                // 🔹 Auto fulfill reserved stock
+                var fulfillQty = Math.Min(item.QuantityReserved - item.QuantityFulfilled, reserveQty);
+                if (fulfillQty > 0)
+                {
+                    item.QuantityFulfilled += fulfillQty;
+                    item.QuantityReserved -= fulfillQty;
+                    stock.QuantityReserved -= fulfillQty;
+
+                    _context.StockTransactions.Add(new StockTransaction
+                    {
+                        Id = Guid.NewGuid(),
+                        ProductId = item.ProductId,
+                        Quantity = fulfillQty,
+                        Type = "FULFILL",
+                        ReferenceId = order.Id,
+                        Date = DateTime.UtcNow,
+                        PerformedBy = "System",
+                        Notes = $"Fulfilled for SO {order.OrderNumber}"
+                    });
+                }
+
                 remainingQty -= reserveQty;
             }
 
-            // 🔹 Check shortage after reservation and incoming POs
+            // 🔹 Create PO / Production if shortage remains
             var shortage = remainingQty - incomingPOQty;
-            if (shortage <= 0)
-                continue;
+            if (shortage <= 0) continue;
 
-            // 🔹 Skip if already planned
             var alreadyPlanned = await _context.PurchaseOrderItems
                 .AnyAsync(p => p.ProductId == item.ProductId && p.SalesOrderItemId == item.Id);
             var alreadyPlannedMO = await _context.ProductionOrders
                 .AnyAsync(p => p.ProductId == item.ProductId && p.SalesOrderItemId == item.Id);
 
-            if (alreadyPlanned || alreadyPlannedMO)
-                continue;
+            if (alreadyPlanned || alreadyPlannedMO) continue;
 
-            // 🔹 Check BOM for production
             var bom = await _context.BillOfMaterials
                 .Include(b => b.Items)
                 .FirstOrDefaultAsync(b => b.ProductId == item.ProductId);
@@ -110,7 +123,6 @@ public class MrpService
 
                 _context.ProductionOrders.Add(productionOrder);
 
-                // Plan raw materials recursively
                 foreach (var bomItem in bom.Items)
                 {
                     var requiredQty = bomItem.Quantity * shortage;
@@ -119,12 +131,10 @@ public class MrpService
             }
             else
             {
-                // 🔹 No BOM → create PO
                 var supplier = await GetPreferredSupplierAsync(item.ProductId);
                 if (supplier == null)
                     throw new Exception($"No supplier found for product {item.ProductId}");
 
-                // Reuse PO if exists
                 if (!purchaseOrdersMap.TryGetValue(supplier.SupplierId, out var po))
                 {
                     po = new PurchaseOrder
@@ -152,7 +162,7 @@ public class MrpService
             }
         }
 
-        //  Update Sales Order status based on reserved & fulfilled
+        // 🔹 Use only helper to update SO & item statuses
         Helper.UpdateSalesOrderStatus(order);
 
         await _context.SaveChangesAsync();
