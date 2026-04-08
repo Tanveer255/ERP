@@ -9,7 +9,7 @@ using System;
 
 namespace ERP.Service.Document;
 
-public class MrpService 
+public class MrpService
 {
     private readonly ManufacturingDbContext _context;
     private readonly SalesOrderService _salesOrderService;
@@ -24,61 +24,72 @@ public class MrpService
     {
         var salesOrderResponse = await _salesOrderService.LoadSalesOrderWithItems(salesOrderId);
 
-        if (!salesOrderResponse.IsSuccess)
-            throw new Exception(salesOrderResponse.Message);
+        if (!salesOrderResponse.IsSuccess) throw new Exception(salesOrderResponse.Message);
 
-        var salesOrder = salesOrderResponse.Data;
+        var salesOrder = salesOrderResponse.Data ?? throw new Exception("Sales order not found.");
 
-        if (salesOrder == null)
-            throw new Exception("Sales order not found.");
+        var purchaseOrdersBySupplier = new Dictionary<Guid, PurchaseOrder>();
 
-        var purchaseOrdersByProduct = new Dictionary<Guid, PurchaseOrder>();
-
-        foreach (var orderItem in salesOrder.Items)
+        foreach (var item in salesOrder.Items)
         {
-            // Attempt to reserve and fulfill available stock
-            var unfulfilledQuantity = await ReserveAndFulfillStock(orderItem);
+            var remainingQty = await ReserveStockForItemAsync(item);
 
-            // If stock is insufficient, plan procurement
-            if (unfulfilledQuantity > 0)
+            if (remainingQty > 0)
             {
-                await PlanItemShortageAsync(orderItem, unfulfilledQuantity, purchaseOrdersByProduct);
+                await PlanShortageAsync(item, remainingQty, purchaseOrdersBySupplier);
             }
         }
 
-        // Update overall sales order status based on fulfillment
         Helper.UpdateSalesOrderStatus(salesOrder);
-
         await _context.SaveChangesAsync();
     }
 
-    private async Task<SalesOrder?> LoadSalesOrderWithItems(Guid salesOrderId)
+    private async Task<decimal> ReserveStockForItemAsync(SalesOrderItem item)
     {
-        return await _context.SalesOrders
-            .Include(o => o.Items)
-            .FirstOrDefaultAsync(o => o.Id == salesOrderId);
-    }
+        // Load product info
+        var product = await _context.Products
+            .Where(p => p.Id == item.ProductId)
+            .Select(p => new
+            {
+                p.IsManufactured,
+                HasBOM = _context.BillOfMaterials.Any(b => b.ProductId == p.Id),
+                p.IsPurchasable
+            })
+            .FirstOrDefaultAsync();
 
-    private async Task<decimal> ReserveAndFulfillStock(SalesOrderItem item)
-    {
-        var stock = await _context.ProductStocks
-            .FirstOrDefaultAsync(s => s.ProductId == item.ProductId);
+        if (product == null) throw new Exception($"Product not found: {item.ProductId}");
 
-        var availableStock = stock?.QuantityAvailable ?? 0;
+        // Only reserve stock if product is purchasable and not a manufactured BOM parent
+        if (product.IsManufactured && product.HasBOM) return item.QuantityRequested - item.QuantityFulfilled;
+
         var remainingQty = item.QuantityRequested - item.QuantityFulfilled - item.QuantityReserved;
+        if (remainingQty <= 0) return 0;
 
-        if (remainingQty <= 0 || availableStock <= 0)
-            return remainingQty;
+        var stock = await _context.ProductStocks
+            .Where(s => s.ProductId == item.ProductId && s.QuantityAvailable > 0)
+            .OrderByDescending(s => s.QuantityAvailable)
+            .FirstOrDefaultAsync();
 
-        var reserveQty = Math.Min(remainingQty, availableStock);
+        if (stock == null) return remainingQty;
 
+        var reserveQty = Math.Min(stock.QuantityAvailable, remainingQty);
         stock.QuantityAvailable -= reserveQty;
         stock.QuantityReserved += reserveQty;
         item.QuantityReserved += reserveQty;
 
-        AddStockTransaction(item.ProductId, reserveQty, "RESERVE", item.SalesOrderId, $"Reserved for Sales Order {item.SalesOrderId}");
+        _context.StockTransactions.Add(new StockTransaction
+        {
+            Id = Guid.NewGuid(),
+            ProductId = item.ProductId,
+            Quantity = reserveQty,
+            Type = "RESERVE",
+            ReferenceId = item.SalesOrderId,
+            Date = DateTime.UtcNow,
+            PerformedBy = "System",
+            Notes = $"Reserved for Sales Order {item.SalesOrderId}"
+        });
 
-        // Auto fulfill reserved stock
+        // Auto-fulfill
         var fulfillQty = Math.Min(item.QuantityReserved - item.QuantityFulfilled, reserveQty);
         if (fulfillQty > 0)
         {
@@ -86,68 +97,49 @@ public class MrpService
             item.QuantityReserved -= fulfillQty;
             stock.QuantityReserved -= fulfillQty;
 
-            AddStockTransaction(item.ProductId, fulfillQty, "FULFILL", item.SalesOrderId, $"Fulfilled for SO {item.SalesOrderId}");
+            _context.StockTransactions.Add(new StockTransaction
+            {
+                Id = Guid.NewGuid(),
+                ProductId = item.ProductId,
+                Quantity = fulfillQty,
+                Type = "FULFILL",
+                ReferenceId = item.SalesOrderId,
+                Date = DateTime.UtcNow,
+                PerformedBy = "System",
+                Notes = $"Fulfilled for Sales Order {item.SalesOrderId}"
+            });
         }
+
+        await _context.SaveChangesAsync();
 
         return remainingQty - reserveQty;
     }
-    private void AddStockTransaction(Guid productId, decimal qty, string type, Guid referenceId, string notes)
+
+    private async Task PlanShortageAsync(SalesOrderItem item, decimal shortageQty, Dictionary<Guid, PurchaseOrder> purchaseOrdersBySupplier)
     {
-        _context.StockTransactions.Add(new StockTransaction
-        {
-            Id = Guid.NewGuid(),
-            ProductId = productId,
-            Quantity = qty,
-            Type = type,
-            ReferenceId = referenceId,
-            Date = DateTime.UtcNow,
-            PerformedBy = "System",
-            Notes = notes
-        });
-    }
-    private async Task PlanItemShortageAsync(
-        SalesOrderItem orderItem,
-        decimal shortageQuantity,
-        Dictionary<Guid, PurchaseOrder> purchaseOrdersByProduct)
-    {
-        // Check if already planned in Purchase Orders or Production Orders
-        var isPlannedInPurchase = await _context.PurchaseOrderItems
-            .AnyAsync(p => p.ProductId == orderItem.ProductId && p.SalesOrderItemId == orderItem.Id);
-
-        var isPlannedInProduction = await _context.ProductionOrders
-            .AnyAsync(p => p.ProductId == orderItem.ProductId && p.SalesOrderItemId == orderItem.Id);
-
-        if (isPlannedInPurchase || isPlannedInProduction)
-            return;
-
-        // Check if product is manufactured
-        var isManufactured = await _context.Products
-            .Where(p => p.Id == orderItem.ProductId)
-            .Select(p => p.IsManufactured)
+        var product = await _context.Products
+            .Where(p => p.Id == item.ProductId)
+            .Select(p => new { p.IsManufactured })
             .FirstOrDefaultAsync();
 
-        // Load BOM if exists
-        var billOfMaterials = await _context.BillOfMaterials
-            .Include(b => b.Items)
-            .FirstOrDefaultAsync(b => b.ProductId == orderItem.ProductId);
+        var bom = await _context.BillOfMaterials.Include(b => b.Items)
+            .FirstOrDefaultAsync(b => b.ProductId == item.ProductId);
 
-        // Validate BOM for manufactured items
-        if (isManufactured && billOfMaterials == null)
-            throw new Exception($"BOM not found for product {orderItem.ProductId} please create a BOM before proceeding.");
-
-        // Plan based on product type
-        if (isManufactured)
+        if (product.IsManufactured && bom != null)
         {
-            await CreateProductionOrder(orderItem, shortageQuantity, billOfMaterials!);
+            // Plan production for BOM
+            await CreateProductionOrder(item, shortageQty, bom, purchaseOrdersBySupplier);
         }
         else
         {
-            await CreatePurchaseOrder(orderItem, shortageQuantity, purchaseOrdersByProduct);
+            // Plan purchase for raw material
+            await CreatePurchaseOrder(item, shortageQty, purchaseOrdersBySupplier);
         }
     }
-    private async Task CreateProductionOrder(SalesOrderItem item, decimal quantity, BillOfMaterial bom)
+
+    private async Task CreateProductionOrder(SalesOrderItem item, decimal quantity, BillOfMaterial bom, Dictionary<Guid, PurchaseOrder> purchaseOrdersBySupplier)
     {
-        var productionOrder = new ProductionOrder
+        var mo = new ProductionOrder
         {
             Id = Guid.NewGuid(),
             OrderNumber = $"MO-{DateTime.UtcNow.Ticks}",
@@ -156,98 +148,46 @@ public class MrpService
             PlannedQuantity = quantity,
             ProducedQuantity = 0,
             Status = nameof(ProductionStatus.Planned),
-            PlannedStartDate = DateTime.UtcNow,
-            PlannedFinishDate = DateTime.UtcNow.AddDays(2),
             SalesOrderItemId = item.Id
         };
-
-        _context.ProductionOrders.Add(productionOrder);
+        _context.ProductionOrders.Add(mo);
 
         foreach (var bomItem in bom.Items)
         {
-            var requiredQty = bomItem.Quantity * quantity;
-            await PlanMaterialRequirement(bomItem.ComponentId, requiredQty, item.Id);
+            await PlanMaterialRequirement(bomItem.ComponentId, bomItem.Quantity * quantity, item.Id, purchaseOrdersBySupplier);
         }
     }
-    private async Task CreatePurchaseOrder(SalesOrderItem item, decimal shortage, Dictionary<Guid, PurchaseOrder> purchaseOrdersMap)
+
+    private async Task PlanMaterialRequirement(Guid productId, decimal requiredQty, Guid salesOrderItemId, Dictionary<Guid, PurchaseOrder> purchaseOrdersBySupplier)
     {
-        var supplier = await GetPreferredSupplierAsync(item.ProductId);
-        if (supplier == null) throw new Exception($"No supplier found for product {item.ProductId}");
-
-        if (!purchaseOrdersMap.TryGetValue(supplier.SupplierId, out var po))
-        {
-            po = new PurchaseOrder
-            {
-                Id = Guid.NewGuid(),
-                OrderNumber = $"AUTO-PO-{DateTime.UtcNow.Ticks}",
-                SupplierId = supplier.SupplierId,
-                Status = PurchaseOrderStatus.Pending,
-                OrderDate = DateTime.UtcNow,
-                Items = new List<PurchaseOrderItem>()
-            };
-
-            purchaseOrdersMap[supplier.SupplierId] = po;
-            _context.PurchaseOrders.Add(po);
-        }
-
-        po.Items.Add(new PurchaseOrderItem
-        {
-            Id = Guid.NewGuid(),
-            ProductId = item.ProductId,
-            QuantityRequested = shortage,
-            QuantityReceived = 0,
-            SalesOrderItemId = item.Id
-        });
-    }
-
-    //  Recursive Material Planning
-    private async Task PlanMaterialRequirement(Guid productId, decimal requiredQty, Guid salesOrderItemId)
-    {
-        var stock = await _context.ProductStocks
-            .FirstOrDefaultAsync(s => s.ProductId == productId);
-
+        var stock = await _context.ProductStocks.FirstOrDefaultAsync(s => s.ProductId == productId);
         var available = stock?.QuantityAvailable ?? 0;
-
         var shortage = requiredQty - available;
-        if (shortage <= 0)
-            return;
+        if (shortage <= 0) return;
 
-        var bom = await _context.BillOfMaterials
-            .Include(b => b.Items)
-            .FirstOrDefaultAsync(b => b.ProductId == productId);
-
+        var bom = await _context.BillOfMaterials.Include(b => b.Items).FirstOrDefaultAsync(b => b.ProductId == productId);
         if (bom != null)
         {
-            // Nested production
-            var mo = new ProductionOrder
-            {
-                Id = Guid.NewGuid(),
-                OrderNumber = $"MO-{DateTime.UtcNow.Ticks}",
-                ProductId = productId,
-                BillOfMaterialId = bom.Id,
-                PlannedQuantity = shortage,
-                Status = nameof(ProductionStatus.Planned),
-                SalesOrderItemId = salesOrderItemId
-            };
-
-            _context.ProductionOrders.Add(mo);
-
-            foreach (var item in bom.Items)
-            {
-                await PlanMaterialRequirement(
-                    item.ComponentId,
-                    item.Quantity * shortage,
-                    salesOrderItemId);
-            }
+            await CreateProductionOrder(new SalesOrderItem { ProductId = productId, Id = salesOrderItemId }, shortage, bom, purchaseOrdersBySupplier);
         }
         else
         {
-            // Purchase raw material
-            var supplier = await GetPreferredSupplierAsync(productId);
-            if (supplier == null)
-                return;
+            await CreatePurchaseOrder(new SalesOrderItem { ProductId = productId, Id = salesOrderItemId }, shortage, purchaseOrdersBySupplier);
+        }
+    }
 
-            var po = new PurchaseOrder
+    private async Task CreatePurchaseOrder(SalesOrderItem item, decimal shortageQty, Dictionary<Guid, PurchaseOrder> purchaseOrdersBySupplier)
+    {
+        var supplier = await _context.ProductSuppliers
+            .Where(s => s.ProductId == item.ProductId)
+            .Select(s => new ProductSupplier { SupplierId = s.SupplierId, Price = s.Price })
+            .FirstOrDefaultAsync();
+
+        if (supplier == null) return;
+
+        if (!purchaseOrdersBySupplier.TryGetValue(supplier.SupplierId, out var po))
+        {
+            po = new PurchaseOrder
             {
                 Id = Guid.NewGuid(),
                 OrderNumber = $"AUTO-PO-{DateTime.UtcNow.Ticks}",
@@ -256,29 +196,17 @@ public class MrpService
                 OrderDate = DateTime.UtcNow,
                 Items = new List<PurchaseOrderItem>()
             };
-
-            po.Items.Add(new PurchaseOrderItem
-            {
-                Id = Guid.NewGuid(),
-                ProductId = productId,
-                QuantityRequested = shortage,
-                QuantityReceived = 0,
-                SalesOrderItemId = salesOrderItemId
-            });
-
+            purchaseOrdersBySupplier[supplier.SupplierId] = po;
             _context.PurchaseOrders.Add(po);
         }
-    }
 
-    private async Task<ProductSupplier?> GetPreferredSupplierAsync(Guid productId)
-    {
-        return await _context.ProductSuppliers
-            .Where(s => s.ProductId == productId)
-            .Select(s => new ProductSupplier
-            {
-                SupplierId = s.SupplierId,
-                Price = s.Price
-            })
-            .FirstOrDefaultAsync();
+        po.Items.Add(new PurchaseOrderItem
+        {
+            Id = Guid.NewGuid(),
+            ProductId = item.ProductId,
+            QuantityRequested = shortageQty,
+            QuantityReceived = 0,
+            SalesOrderItemId = item.Id
+        });
     }
 }
