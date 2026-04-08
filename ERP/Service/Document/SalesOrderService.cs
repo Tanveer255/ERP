@@ -1,4 +1,6 @@
 ﻿using ERP.Data;
+using ERP.Data.DTO;
+using ERP.Entity.Document;
 using ERP.Entity.Product;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,6 +13,15 @@ public class SalesOrderService
     public SalesOrderService(ManufacturingDbContext context)
     {
         _context = context;
+    }
+    public async Task<ResultDTO<SalesOrder>> LoadSalesOrderWithItems(Guid salesOrderId)
+    {
+        var result  = await _context.SalesOrders
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Id == salesOrderId);
+        if (result == null)
+            return ResultDTO<SalesOrder>.Failure("Sales order not found.");
+        return ResultDTO<SalesOrder>.Success(result);
     }
     public async Task UpdateSalesOrderStock(Guid salesOrderId)
     {

@@ -12,30 +12,43 @@ namespace ERP.Service.Document;
 public class MrpService 
 {
     private readonly ManufacturingDbContext _context;
+    private readonly SalesOrderService _salesOrderService;
 
-    public MrpService(ManufacturingDbContext context)
+    public MrpService(ManufacturingDbContext context, SalesOrderService salesOrderService)
     {
         _context = context;
+        _salesOrderService = salesOrderService;
     }
 
     public async Task RunMrpForSalesOrder(Guid salesOrderId)
     {
-        var order = await LoadSalesOrderWithItems(salesOrderId);
-        if (order == null) throw new Exception("Sales Order not found");
+        var salesOrderResponse = await _salesOrderService.LoadSalesOrderWithItems(salesOrderId);
 
-        var purchaseOrdersMap = new Dictionary<Guid, PurchaseOrder>();
+        if (!salesOrderResponse.IsSuccess)
+            throw new Exception(salesOrderResponse.Message);
 
-        foreach (var item in order.Items)
+        var salesOrder = salesOrderResponse.Data;
+
+        if (salesOrder == null)
+            throw new Exception("Sales order not found.");
+
+        var purchaseOrdersByProduct = new Dictionary<Guid, PurchaseOrder>();
+
+        foreach (var orderItem in salesOrder.Items)
         {
-            var remainingQty = await ReserveAndFulfillStock(item);
+            // Attempt to reserve and fulfill available stock
+            var unfulfilledQuantity = await ReserveAndFulfillStock(orderItem);
 
-            if (remainingQty > 0)
+            // If stock is insufficient, plan procurement
+            if (unfulfilledQuantity > 0)
             {
-                await PlanShortage(item, remainingQty, purchaseOrdersMap);
+                await PlanShortage(orderItem, unfulfilledQuantity, purchaseOrdersByProduct);
             }
         }
 
-        Helper.UpdateSalesOrderStatus(order);
+        // Update overall sales order status based on fulfillment
+        Helper.UpdateSalesOrderStatus(salesOrder);
+
         await _context.SaveChangesAsync();
     }
 
