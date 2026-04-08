@@ -42,7 +42,7 @@ public class MrpService
             // If stock is insufficient, plan procurement
             if (unfulfilledQuantity > 0)
             {
-                await PlanShortage(orderItem, unfulfilledQuantity, purchaseOrdersByProduct);
+                await PlanItemShortageAsync(orderItem, unfulfilledQuantity, purchaseOrdersByProduct);
             }
         }
 
@@ -105,28 +105,44 @@ public class MrpService
             Notes = notes
         });
     }
-    private async Task PlanShortage(SalesOrderItem item, decimal shortage, Dictionary<Guid, PurchaseOrder> purchaseOrdersMap)
+    private async Task PlanItemShortageAsync(
+        SalesOrderItem orderItem,
+        decimal shortageQuantity,
+        Dictionary<Guid, PurchaseOrder> purchaseOrdersByProduct)
     {
-        // Check if already planned
-        var alreadyPlanned = await _context.PurchaseOrderItems
-            .AnyAsync(p => p.ProductId == item.ProductId && p.SalesOrderItemId == item.Id);
-        var alreadyPlannedMO = await _context.ProductionOrders
-            .AnyAsync(p => p.ProductId == item.ProductId && p.SalesOrderItemId == item.Id);
+        // Check if already planned in Purchase Orders or Production Orders
+        var isPlannedInPurchase = await _context.PurchaseOrderItems
+            .AnyAsync(p => p.ProductId == orderItem.ProductId && p.SalesOrderItemId == orderItem.Id);
 
-        if (alreadyPlanned || alreadyPlannedMO) return;
+        var isPlannedInProduction = await _context.ProductionOrders
+            .AnyAsync(p => p.ProductId == orderItem.ProductId && p.SalesOrderItemId == orderItem.Id);
 
-        // BOM exists → plan production
-        var bom = await _context.BillOfMaterials
+        if (isPlannedInPurchase || isPlannedInProduction)
+            return;
+
+        // Check if product is manufactured
+        var isManufactured = await _context.Products
+            .Where(p => p.Id == orderItem.ProductId)
+            .Select(p => p.IsManufactured)
+            .FirstOrDefaultAsync();
+
+        // Load BOM if exists
+        var billOfMaterials = await _context.BillOfMaterials
             .Include(b => b.Items)
-            .FirstOrDefaultAsync(b => b.ProductId == item.ProductId);
+            .FirstOrDefaultAsync(b => b.ProductId == orderItem.ProductId);
 
-        if (bom != null)
+        // Validate BOM for manufactured items
+        if (isManufactured && billOfMaterials == null)
+            throw new Exception($"BOM not found for product {orderItem.ProductId} please create a BOM before proceeding.");
+
+        // Plan based on product type
+        if (isManufactured)
         {
-            await CreateProductionOrder(item, shortage, bom);
+            await CreateProductionOrder(orderItem, shortageQuantity, billOfMaterials!);
         }
         else
         {
-            await CreatePurchaseOrder(item, shortage, purchaseOrdersMap);
+            await CreatePurchaseOrder(orderItem, shortageQuantity, purchaseOrdersByProduct);
         }
     }
     private async Task CreateProductionOrder(SalesOrderItem item, decimal quantity, BillOfMaterial bom)

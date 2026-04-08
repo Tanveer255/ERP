@@ -47,7 +47,7 @@ public class PurchaseOrderController : ControllerBase
 
             foreach (var item in po.Data.Items)
             {
-                // ✅ Remaining qty to receive (DELTA SAFE)
+                // Remaining qty to receive (DELTA SAFE)
                 var remainingToReceive = item.QuantityRequested - item.QuantityReceived;
                 if (remainingToReceive <= 0)
                     continue;
@@ -70,7 +70,7 @@ public class PurchaseOrderController : ControllerBase
                     _context.ProductStocks.Add(stock);
                 }
 
-                // ✅ Add to available stock
+                // Add to available stock
                 stock.QuantityAvailable += newReceivedQty;
 
                 // 2️⃣ Update PO item
@@ -85,7 +85,7 @@ public class PurchaseOrderController : ControllerBase
 
                     if (soItem != null)
                     {
-                        // 🔹 STEP A: Reserve stock first
+                        // STEP A: Reserve stock first
                         var reserveRemaining = soItem.QuantityRequested - soItem.QuantityReserved;
 
                         if (reserveRemaining > 0)
@@ -98,7 +98,7 @@ public class PurchaseOrderController : ControllerBase
                             soItem.QuantityReserved += reserveQty;
                         }
 
-                        // 🔹 STEP B: Fulfill from reserved stock
+                        // STEP B: Fulfill from reserved stock
                         var fulfillRemaining = soItem.QuantityRequested - soItem.QuantityFulfilled;
 
                         if (fulfillRemaining > 0)
