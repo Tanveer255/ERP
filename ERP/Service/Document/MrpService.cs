@@ -23,12 +23,12 @@ public class MrpService
     public async Task RunMrpForSalesOrder(Guid salesOrderId)
     {
         var salesOrderResponse = await _salesOrderService.LoadSalesOrderWithItems(salesOrderId);
-
         if (!salesOrderResponse.IsSuccess) throw new Exception(salesOrderResponse.Message);
 
         var salesOrder = salesOrderResponse.Data ?? throw new Exception("Sales order not found.");
 
         var purchaseOrdersBySupplier = new Dictionary<Guid, PurchaseOrder>();
+        var processedProducts = new HashSet<Guid>(); // NEW: track products already planned
 
         foreach (var item in salesOrder.Items)
         {
@@ -36,7 +36,7 @@ public class MrpService
 
             if (remainingQty > 0)
             {
-                await PlanShortageAsync(item, remainingQty, purchaseOrdersBySupplier);
+                await PlanShortageAsync(item, remainingQty, purchaseOrdersBySupplier, processedProducts);
             }
         }
 
@@ -115,7 +115,9 @@ public class MrpService
         return remainingQty - reserveQty;
     }
 
-    private async Task PlanShortageAsync(SalesOrderItem item, decimal shortageQty, Dictionary<Guid, PurchaseOrder> purchaseOrdersBySupplier)
+    private async Task PlanShortageAsync(SalesOrderItem item, decimal shortageQty,
+    Dictionary<Guid, PurchaseOrder> purchaseOrdersBySupplier,
+    HashSet<Guid> processedProducts)
     {
         var product = await _context.Products
             .Where(p => p.Id == item.ProductId)
@@ -127,18 +129,22 @@ public class MrpService
 
         if (product.IsManufactured && bom != null)
         {
-            // Plan production for BOM
-            await CreateProductionOrder(item, shortageQty, bom, purchaseOrdersBySupplier);
+            await CreateProductionOrder(item, shortageQty, bom, purchaseOrdersBySupplier, processedProducts);
         }
         else
         {
-            // Plan purchase for raw material
             await CreatePurchaseOrder(item, shortageQty, purchaseOrdersBySupplier);
         }
     }
 
-    private async Task CreateProductionOrder(SalesOrderItem item, decimal quantity, BillOfMaterial bom, Dictionary<Guid, PurchaseOrder> purchaseOrdersBySupplier)
+    // Add this parameter to keep track of already planned products
+    private async Task CreateProductionOrder(SalesOrderItem item, decimal quantity, BillOfMaterial bom,
+        Dictionary<Guid, PurchaseOrder> purchaseOrdersBySupplier,
+        HashSet<Guid> processedProducts)
     {
+        if (processedProducts.Contains(item.ProductId)) return;
+        processedProducts.Add(item.ProductId);
+
         var mo = new ProductionOrder
         {
             Id = Guid.NewGuid(),
@@ -154,12 +160,18 @@ public class MrpService
 
         foreach (var bomItem in bom.Items)
         {
-            await PlanMaterialRequirement(bomItem.ComponentId, bomItem.Quantity * quantity, item.Id, purchaseOrdersBySupplier);
+            await PlanMaterialRequirement(bomItem.ComponentId, bomItem.Quantity * quantity, item.Id,
+                purchaseOrdersBySupplier, processedProducts);
         }
     }
 
-    private async Task PlanMaterialRequirement(Guid productId, decimal requiredQty, Guid salesOrderItemId, Dictionary<Guid, PurchaseOrder> purchaseOrdersBySupplier)
+    private async Task PlanMaterialRequirement(Guid productId, decimal requiredQty, Guid salesOrderItemId,
+    Dictionary<Guid, PurchaseOrder> purchaseOrdersBySupplier,
+    HashSet<Guid> processedProducts)
     {
+        if (processedProducts.Contains(productId)) return;
+        processedProducts.Add(productId);
+
         var stock = await _context.ProductStocks.FirstOrDefaultAsync(s => s.ProductId == productId);
         var available = stock?.QuantityAvailable ?? 0;
         var shortage = requiredQty - available;
@@ -168,11 +180,13 @@ public class MrpService
         var bom = await _context.BillOfMaterials.Include(b => b.Items).FirstOrDefaultAsync(b => b.ProductId == productId);
         if (bom != null)
         {
-            await CreateProductionOrder(new SalesOrderItem { ProductId = productId, Id = salesOrderItemId }, shortage, bom, purchaseOrdersBySupplier);
+            await CreateProductionOrder(new SalesOrderItem { ProductId = productId, Id = salesOrderItemId }, shortage, bom,
+                purchaseOrdersBySupplier, processedProducts);
         }
         else
         {
-            await CreatePurchaseOrder(new SalesOrderItem { ProductId = productId, Id = salesOrderItemId }, shortage, purchaseOrdersBySupplier);
+            await CreatePurchaseOrder(new SalesOrderItem { ProductId = productId, Id = salesOrderItemId }, shortage,
+                purchaseOrdersBySupplier);
         }
     }
 

@@ -86,24 +86,46 @@ public class PurchaseOrderController : ControllerBase
                     foreach (var soItem in pendingSOItems)
                     {
                         // Reserve available stock
-                        var saleorderItemStock = await _context.ProductStocks.FirstOrDefaultAsync(s => s.ProductId == soItem.ProductId);
                         var reserveNeeded = soItem.QuantityRequested - soItem.QuantityReserved - soItem.QuantityFulfilled;
-                        if (reserveNeeded > 0 && saleorderItemStock.QuantityAvailable > 0)
+                        if (reserveNeeded > 0 && stock.QuantityAvailable > 0)
                         {
-                            var reserveQty = Math.Min(saleorderItemStock.QuantityAvailable, reserveNeeded);
-                            saleorderItemStock.QuantityAvailable -= reserveQty;
-                            saleorderItemStock.QuantityReserved += reserveQty;
+                            var reserveQty = Math.Min(stock.QuantityAvailable, reserveNeeded);
+                            stock.QuantityAvailable -= reserveQty;
+                            stock.QuantityReserved += reserveQty;
                             soItem.QuantityReserved += reserveQty;
-                        }
 
-                        // Fulfill from reserved stock
-                        var fulfillNeeded = soItem.QuantityRequested - soItem.QuantityFulfilled;
-                        var fulfillQty = Math.Min(soItem.QuantityReserved, fulfillNeeded);
-                        if (fulfillQty > 0)
-                        {
-                            soItem.QuantityFulfilled += fulfillQty;
-                            soItem.QuantityReserved -= fulfillQty;
-                            stock.QuantityReserved -= fulfillQty;
+                            // Optional: auto-fulfill
+                            var fulfillQty = Math.Min(soItem.QuantityReserved - soItem.QuantityFulfilled, reserveQty);
+                            if (fulfillQty > 0)
+                            {
+                                soItem.QuantityFulfilled += fulfillQty;
+                                soItem.QuantityReserved -= fulfillQty;
+                                stock.QuantityReserved -= fulfillQty;
+
+                                _context.StockTransactions.Add(new StockTransaction
+                                {
+                                    Id = Guid.NewGuid(),
+                                    ProductId = line.ProductId,
+                                    Quantity = fulfillQty,
+                                    Type = "FULFILL",
+                                    ReferenceId = soItem.SalesOrderId,
+                                    Date = DateTime.UtcNow,
+                                    PerformedBy = "System",
+                                    Notes = $"Auto-fulfilled for Sales Order {soItem.SalesOrderId}"
+                                });
+                            }
+
+                            _context.StockTransactions.Add(new StockTransaction
+                            {
+                                Id = Guid.NewGuid(),
+                                ProductId = line.ProductId,
+                                Quantity = reserveQty,
+                                Type = "RESERVE",
+                                ReferenceId = soItem.SalesOrderId,
+                                Date = DateTime.UtcNow,
+                                PerformedBy = "System",
+                                Notes = $"Reserved from received PO {purchaseOrder.OrderNumber}"
+                            });
                         }
 
                         affectedSalesOrderIds.Add(soItem.SalesOrderId);
@@ -112,7 +134,7 @@ public class PurchaseOrderController : ControllerBase
                     }
                 }
 
-                // Add stock transaction
+                // Add stock transaction for receive
                 _context.StockTransactions.Add(new StockTransaction
                 {
                     Id = Guid.NewGuid(),
