@@ -25,4 +25,6 @@ public class SalesOrderItem
     // Navigation
     public SalesOrder SalesOrder { get; set; }
     public ProductEntity Product { get; set; }
+    public DateTime? CreatedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
 }
