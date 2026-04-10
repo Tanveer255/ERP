@@ -23,4 +23,18 @@ public class ProductService
 
         return ResultDTO<ProductEntity>.Success(product);
     }
+    public async Task<bool> IsStockItemAsync( Guid productId, CancellationToken cancellationToken = default)
+    {
+        var productInfo = await _context.Products
+            .Where(p => p.Id == productId)
+            .Select(p => new
+            {
+                p.IsManufactured,
+                HasBOM = _context.BillOfMaterials.Any(b => b.ProductId == p.Id)
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return productInfo != null && !productInfo.IsManufactured && !productInfo.HasBOM;
+    }
+
 }

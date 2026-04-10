@@ -4,6 +4,7 @@ using ERP.Entity.Product;
 using ERP.Enum;
 using ERP.Service;
 using ERP.Service.Document;
+using ERP.Service.Product;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -18,17 +19,26 @@ public class PurchaseOrderController : ControllerBase
     private readonly PurchaseOrderService _purchaseOrderService;
     private readonly SalesOrderService _salesOrderService;
     private readonly MrpService _mrpService;
+    private readonly ProductService _productService;
+    private readonly StockTransactionService _stockTransactionService;
+    private readonly ProductStockService _productStockService;
     public PurchaseOrderController(
         ManufacturingDbContext context,
         PurchaseOrderService purchaseOrderService,
         SalesOrderService salesOrderService,
-        MrpService mrpService
+        MrpService mrpService,
+        ProductService productService,
+        StockTransactionService stockTransactionService,
+        ProductStockService productStockService
         )
     {
         _context = context;
         _purchaseOrderService = purchaseOrderService;
         _salesOrderService = salesOrderService;
         _mrpService = mrpService;
+        _productService = productService;
+        _stockTransactionService = stockTransactionService;
+        _productStockService = productStockService;
     }
 
     [HttpPost("receive-purchase-order")]
@@ -50,32 +60,26 @@ public class PurchaseOrderController : ControllerBase
                 if (qtyToReceive <= 0) continue;
 
                 // Ensure product stock record exists
-                var stock = await _context.ProductStocks.FirstOrDefaultAsync(s => s.ProductId == line.ProductId);
-                if (stock == null)
-                {
-                    stock = new ProductStock
-                    {
-                        Id = Guid.NewGuid(),
-                        ProductId = line.ProductId,
-                        QuantityAvailable = 0,
-                        QuantityReserved = 0
-                    };
-                    _context.ProductStocks.Add(stock);
-                }
+                var productStock = await _productStockService.GetStockStockByProductId(line.ProductId);
+                //if (stock == null)
+                //{
+                //    stock = new ProductStock
+                //    {
+                //        Id = Guid.NewGuid(),
+                //        ProductId = line.ProductId,
+                //        QuantityAvailable = 0,
+                //        QuantityReserved = 0
+                //    };
+                //    _context.ProductStocks.Add(stock);
+                //}
 
                 // Increase available stock and update PO line received quantity
+                var stock = productStock.Data
                 stock.QuantityAvailable += qtyToReceive;
                 line.QuantityReceived += qtyToReceive;
 
                 // Check product info
-                var productInfo = await _context.Products
-                    .Where(p => p.Id == line.ProductId)
-                    .Select(p => new { p.IsManufactured, HasBOM = _context.BillOfMaterials.Any(b => b.ProductId == p.Id) })
-                    .FirstOrDefaultAsync();
-
-                var isStockItem = productInfo != null
-                                  && !productInfo.IsManufactured
-                                  && !productInfo.HasBOM;
+                var isStockItem = await _productService.IsStockItemAsync(line.ProductId);
 
                 if (isStockItem)
                 {
@@ -114,18 +118,22 @@ public class PurchaseOrderController : ControllerBase
                                         Notes = $"Auto-fulfilled for Sales Order {soItem.SalesOrderId}"
                                     });
                                 }
+                                await _stockTransactionService.AddReceiveTransactionAsync("RECEIVE",
+                                    line.ProductId, qtyToReceive, soItem.SalesOrderId,
+                                    purchaseOrder.OrderNumber,
+                                    $"Reserved from received PO {purchaseOrder.OrderNumber}");
 
-                                _context.StockTransactions.Add(new StockTransaction
-                                {
-                                    Id = Guid.NewGuid(),
-                                    ProductId = line.ProductId,
-                                    Quantity = reserveQty,
-                                    Type = "RESERVE",
-                                    ReferenceId = soItem.SalesOrderId,
-                                    Date = DateTime.UtcNow,
-                                    PerformedBy = "System",
-                                    Notes = $"Reserved from received PO {purchaseOrder.OrderNumber}"
-                                });
+                                //_context.StockTransactions.Add(new StockTransaction
+                                //{
+                                //    Id = Guid.NewGuid(),
+                                //    ProductId = line.ProductId,
+                                //    Quantity = reserveQty,
+                                //    Type = "RESERVE",
+                                //    ReferenceId = soItem.SalesOrderId,
+                                //    Date = DateTime.UtcNow,
+                                //    PerformedBy = "System",
+                                //    Notes = $"Reserved from received PO {purchaseOrder.OrderNumber}"
+                                //});
                             }
 
                             affectedSalesOrderIds.Add(soItem.SalesOrderId);
@@ -136,17 +144,10 @@ public class PurchaseOrderController : ControllerBase
                 }
 
                 // Add stock transaction for receive
-                _context.StockTransactions.Add(new StockTransaction
-                {
-                    Id = Guid.NewGuid(),
-                    ProductId = line.ProductId,
-                    Quantity = qtyToReceive,
-                    Type = "RECEIVE",
-                    ReferenceId = purchaseOrder.Id,
-                    Date = DateTime.UtcNow,
-                    PerformedBy = "System",
-                    Notes = $"Received from PO {purchaseOrder.OrderNumber}"
-                });
+                await _stockTransactionService.AddReceiveTransactionAsync("RECEIVE", line.ProductId,
+                    qtyToReceive, purchaseOrder.Id,
+                    purchaseOrder.OrderNumber,
+                    $"Received from PO ");
             }
 
             // Update PO status
