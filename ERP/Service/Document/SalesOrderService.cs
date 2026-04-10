@@ -55,4 +55,16 @@ public class SalesOrderService
 
         await _context.SaveChangesAsync();
     }
+
+    public async Task<ResultDTO<List<SalesOrderItem>>> GetPendingSaleOrderItems(Guid productId) {
+        var result = await _context.SalesOrderItems
+                       .Include(s => s.SalesOrder)
+                       .Where(s => s.ProductId == productId &&
+                                   s.QuantityRequested > s.QuantityFulfilled)
+                       .OrderBy(s => s.SalesOrder.OrderDate) // optional: FIFO
+                       .ToListAsync();
+        if (result.Count == 0)
+            return ResultDTO<List<SalesOrderItem>>.Failure("No sale order item find");
+        return  ResultDTO<List<SalesOrderItem>>.Success(result);
+    }
 }

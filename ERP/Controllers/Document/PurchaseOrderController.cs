@@ -73,64 +73,65 @@ public class PurchaseOrderController : ControllerBase
                     .Select(p => new { p.IsManufactured, HasBOM = _context.BillOfMaterials.Any(b => b.ProductId == p.Id) })
                     .FirstOrDefaultAsync();
 
-                // Reserve & fulfill for all pending sales order items if applicable
-                if (productInfo != null && !productInfo.IsManufactured && !productInfo.HasBOM)
+                var isStockItem = productInfo != null
+                                  && !productInfo.IsManufactured
+                                  && !productInfo.HasBOM;
+
+                if (isStockItem)
                 {
-                    var pendingSOItems = await _context.SalesOrderItems
-                        .Include(s => s.SalesOrder)
-                        .Where(s => s.ProductId == line.ProductId &&
-                                    s.QuantityRequested > s.QuantityFulfilled)
-                        .OrderBy(s => s.SalesOrder.OrderDate) // optional: FIFO
-                        .ToListAsync();
-
-                    foreach (var soItem in pendingSOItems)
+                    var result = await _salesOrderService.GetPendingSaleOrderItems(line.ProductId);
+                    if (result.IsSuccess)
                     {
-                        // Reserve available stock
-                        var reserveNeeded = soItem.QuantityRequested - soItem.QuantityReserved - soItem.QuantityFulfilled;
-                        if (reserveNeeded > 0 && stock.QuantityAvailable > 0)
+                        var pendingSOItems = result.Data;
+                        foreach (var soItem in pendingSOItems)
                         {
-                            var reserveQty = Math.Min(stock.QuantityAvailable, reserveNeeded);
-                            stock.QuantityAvailable -= reserveQty;
-                            stock.QuantityReserved += reserveQty;
-                            soItem.QuantityReserved += reserveQty;
-
-                            // Optional: auto-fulfill
-                            var fulfillQty = Math.Min(soItem.QuantityReserved - soItem.QuantityFulfilled, reserveQty);
-                            if (fulfillQty > 0)
+                            // Reserve available stock
+                            var reserveNeeded = soItem.QuantityRequested - soItem.QuantityReserved - soItem.QuantityFulfilled;
+                            if (reserveNeeded > 0 && stock.QuantityAvailable > 0)
                             {
-                                soItem.QuantityFulfilled += fulfillQty;
-                                soItem.QuantityReserved -= fulfillQty;
-                                stock.QuantityReserved -= fulfillQty;
+                                var reserveQty = Math.Min(stock.QuantityAvailable, reserveNeeded);
+                                stock.QuantityAvailable -= reserveQty;
+                                stock.QuantityReserved += reserveQty;
+                                soItem.QuantityReserved += reserveQty;
+
+                                // Optional: auto-fulfill
+                                var fulfillQty = Math.Min(soItem.QuantityReserved - soItem.QuantityFulfilled, reserveQty);
+                                if (fulfillQty > 0)
+                                {
+                                    soItem.QuantityFulfilled += fulfillQty;
+                                    soItem.QuantityReserved -= fulfillQty;
+                                    stock.QuantityReserved -= fulfillQty;
+
+                                    _context.StockTransactions.Add(new StockTransaction
+                                    {
+                                        Id = Guid.NewGuid(),
+                                        ProductId = line.ProductId,
+                                        Quantity = fulfillQty,
+                                        Type = "FULFILL",
+                                        ReferenceId = soItem.SalesOrderId,
+                                        Date = DateTime.UtcNow,
+                                        PerformedBy = "System",
+                                        Notes = $"Auto-fulfilled for Sales Order {soItem.SalesOrderId}"
+                                    });
+                                }
 
                                 _context.StockTransactions.Add(new StockTransaction
                                 {
                                     Id = Guid.NewGuid(),
                                     ProductId = line.ProductId,
-                                    Quantity = fulfillQty,
-                                    Type = "FULFILL",
+                                    Quantity = reserveQty,
+                                    Type = "RESERVE",
                                     ReferenceId = soItem.SalesOrderId,
                                     Date = DateTime.UtcNow,
                                     PerformedBy = "System",
-                                    Notes = $"Auto-fulfilled for Sales Order {soItem.SalesOrderId}"
+                                    Notes = $"Reserved from received PO {purchaseOrder.OrderNumber}"
                                 });
                             }
 
-                            _context.StockTransactions.Add(new StockTransaction
-                            {
-                                Id = Guid.NewGuid(),
-                                ProductId = line.ProductId,
-                                Quantity = reserveQty,
-                                Type = "RESERVE",
-                                ReferenceId = soItem.SalesOrderId,
-                                Date = DateTime.UtcNow,
-                                PerformedBy = "System",
-                                Notes = $"Reserved from received PO {purchaseOrder.OrderNumber}"
-                            });
+                            affectedSalesOrderIds.Add(soItem.SalesOrderId);
+
+                            if (stock.QuantityAvailable <= 0) break; // stop if stock depleted
                         }
-
-                        affectedSalesOrderIds.Add(soItem.SalesOrderId);
-
-                        if (stock.QuantityAvailable <= 0) break; // stop if stock depleted
                     }
                 }
 
