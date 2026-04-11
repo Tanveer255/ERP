@@ -5,5 +5,7 @@ public enum StockTransactionType
     ISSUE,
     RESERVE,
     CONSUME,
-    RECEIPT
+    RECEIPT,
+    RECEIVE,
+    FULFILL
 }

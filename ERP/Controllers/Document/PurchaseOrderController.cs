@@ -1,4 +1,5 @@
 ﻿using ERP.Data;
+using ERP.Data.Request;
 using ERP.Entity;
 using ERP.Entity.Product;
 using ERP.Enum;
@@ -59,110 +60,107 @@ public class PurchaseOrderController : ControllerBase
                 var qtyToReceive = line.QuantityRequested - line.QuantityReceived;
                 if (qtyToReceive <= 0) continue;
 
-                // Ensure product stock record exists
                 var productStock = await _productStockService.GetStockStockByProductId(line.ProductId);
-                //if (stock == null)
-                //{
-                //    stock = new ProductStock
-                //    {
-                //        Id = Guid.NewGuid(),
-                //        ProductId = line.ProductId,
-                //        QuantityAvailable = 0,
-                //        QuantityReserved = 0
-                //    };
-                //    _context.ProductStocks.Add(stock);
-                //}
-
-                // Increase available stock and update PO line received quantity
                 var stock = productStock.Data;
+
+                // =========================
+                // STEP 1: RECEIVE STOCK
+                // =========================
                 stock.QuantityAvailable += qtyToReceive;
                 line.QuantityReceived += qtyToReceive;
 
-                // Check product info
+                await _stockTransactionService.AddReceiveTransactionAsync(new ReceiveTransactionRequest
+                {
+                    Type = StockTransactionType.RECEIVE,
+                    ProductId = line.ProductId,
+                    Quantity = qtyToReceive,
+                    ReferenceId = purchaseOrder.Id,
+                    ReferenceNumber = purchaseOrder.OrderNumber,
+                    Note = "Received from PO",
+                    PerformedBy = "System"
+                });
+
                 var isStockItem = await _productService.IsStockItemAsync(line.ProductId);
 
                 if (isStockItem)
                 {
                     var result = await _salesOrderService.GetPendingSaleOrderItems(line.ProductId);
+
                     if (result.IsSuccess)
                     {
-                        var pendingSOItems = result.Data;
-                        foreach (var soItem in pendingSOItems)
+                        foreach (var soItem in result.Data)
                         {
-                            // Reserve available stock
                             var reserveNeeded = soItem.QuantityRequested - soItem.QuantityReserved - soItem.QuantityFulfilled;
-                            if (reserveNeeded > 0 && stock.QuantityAvailable > 0)
+
+                            if (reserveNeeded <= 0 || stock.QuantityAvailable <= 0)
+                                continue;
+
+                            // =========================
+                            // STEP 2: RESERVE STOCK
+                            // =========================
+                            var reserveQty = Math.Min(stock.QuantityAvailable, reserveNeeded);
+
+                            stock.QuantityAvailable -= reserveQty;
+                            stock.QuantityReserved += reserveQty;
+                            soItem.QuantityReserved += reserveQty;
+
+                            await _stockTransactionService.AddReceiveTransactionAsync(new ReceiveTransactionRequest
                             {
-                                var reserveQty = Math.Min(stock.QuantityAvailable, reserveNeeded);
-                                stock.QuantityAvailable -= reserveQty;
-                                stock.QuantityReserved += reserveQty;
-                                soItem.QuantityReserved += reserveQty;
+                                Type = StockTransactionType.RESERVE,
+                                ProductId = line.ProductId,
+                                Quantity = reserveQty,
+                                ReferenceId = soItem.SalesOrderId,
+                                ReferenceNumber = purchaseOrder.OrderNumber,
+                                Note = $"Reserved for SO {soItem.SalesOrderId}",
+                                PerformedBy = "System"
+                            });
 
-                                // Optional: auto-fulfill
-                                var fulfillQty = Math.Min(soItem.QuantityReserved - soItem.QuantityFulfilled, reserveQty);
-                                if (fulfillQty > 0)
+                            // =========================
+                            //  STEP 3: AUTO-FULFILL
+                            // =========================
+                            var fulfillQty = Math.Min(
+                                soItem.QuantityReserved - soItem.QuantityFulfilled,
+                                reserveQty
+                            );
+
+                            if (fulfillQty > 0)
+                            {
+                                soItem.QuantityFulfilled += fulfillQty;
+                                soItem.QuantityReserved -= fulfillQty;
+                                stock.QuantityReserved -= fulfillQty;
+
+                                await _stockTransactionService.AddReceiveTransactionAsync(new ReceiveTransactionRequest
                                 {
-                                    soItem.QuantityFulfilled += fulfillQty;
-                                    soItem.QuantityReserved -= fulfillQty;
-                                    stock.QuantityReserved -= fulfillQty;
-                                    await _stockTransactionService.AddReceiveTransactionAsync(
-                                        "FULFILL",
-                                        line.ProductId, fulfillQty, soItem.SalesOrderId,
-                                        purchaseOrder.OrderNumber,
-                                        $"Auto-fulfilled for Sales Order {soItem.SalesOrderId}"
-                                    );
-                                    //_context.StockTransactions.Add(new StockTransaction
-                                    //{
-                                    //    Id = Guid.NewGuid(),
-                                    //    ProductId = line.ProductId,
-                                    //    Quantity = fulfillQty,
-                                    //    Type = "FULFILL",
-                                    //    ReferenceId = soItem.SalesOrderId,
-                                    //    Date = DateTime.UtcNow,
-                                    //    PerformedBy = "System",
-                                    //    Notes = $"Auto-fulfilled for Sales Order {soItem.SalesOrderId}"
-                                    //});
-                                }
-                                await _stockTransactionService.AddReceiveTransactionAsync(
-                                    "RECEIVE",
-                                    line.ProductId, qtyToReceive, soItem.SalesOrderId,
-                                    purchaseOrder.OrderNumber,
-                                    $"Reserved from received PO {purchaseOrder.OrderNumber}");
-
-                                //_context.StockTransactions.Add(new StockTransaction
-                                //{
-                                //    Id = Guid.NewGuid(),
-                                //    ProductId = line.ProductId,
-                                //    Quantity = reserveQty,
-                                //    Type = "RESERVE",
-                                //    ReferenceId = soItem.SalesOrderId,
-                                //    Date = DateTime.UtcNow,
-                                //    PerformedBy = "System",
-                                //    Notes = $"Reserved from received PO {purchaseOrder.OrderNumber}"
-                                //});
+                                    Type = StockTransactionType.FULFILL,
+                                    ProductId = line.ProductId,
+                                    Quantity = fulfillQty,
+                                    ReferenceId = soItem.SalesOrderId,
+                                    ReferenceNumber = purchaseOrder.OrderNumber,
+                                    Note = $"Auto-fulfilled SO {soItem.SalesOrderId}",
+                                    PerformedBy = "System"
+                                });
                             }
 
                             affectedSalesOrderIds.Add(soItem.SalesOrderId);
 
-                            if (stock.QuantityAvailable <= 0) break; // stop if stock depleted
+                            if (stock.QuantityAvailable <= 0)
+                                break;
                         }
                     }
                 }
-
-                // Add stock transaction for receive
-                await _stockTransactionService.AddReceiveTransactionAsync("RECEIVE", line.ProductId,
-                    qtyToReceive, purchaseOrder.Id,
-                    purchaseOrder.OrderNumber,
-                    $"Received from PO ");
             }
 
-            // Update PO status
+            // =========================
+            // UPDATE PO STATUS
+            // =========================
             purchaseOrder.Status = PurchaseOrderStatus.Received;
             purchaseOrder.ExpectedDate = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
 
-            // Trigger MRP for affected sales orders
+            // =========================
+            // TRIGGER MRP
+            // =========================
             foreach (var soId in affectedSalesOrderIds)
             {
                 await _mrpService.RunMrpForSalesOrder(soId);

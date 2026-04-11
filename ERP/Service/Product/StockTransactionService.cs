@@ -1,4 +1,5 @@
 ﻿using ERP.Data;
+using ERP.Data.Request;
 using ERP.Entity.Product;
 
 namespace ERP.Service.Product;
@@ -10,21 +11,26 @@ public class StockTransactionService
     {
         _context = context;   
     }
-    public async Task AddReceiveTransactionAsync(string type, Guid productId, decimal quantity, Guid referenceId, string referenceNumber, string note, CancellationToken cancellationToken = default)
+    public async Task AddReceiveTransactionAsync(
+    ReceiveTransactionRequest request,
+    CancellationToken cancellationToken = default)
     {
-        if (productId == Guid.Empty) throw new ArgumentException("productId is required", nameof(productId));
-        if (quantity <= 0) throw new ArgumentException("quantity must be greater than zero", nameof(quantity));
+        if (request.ProductId == Guid.Empty)
+            throw new ArgumentException("productId is required", nameof(request.ProductId));
+
+        if (request.Quantity <= 0)
+            throw new ArgumentException("quantity must be greater than zero", nameof(request.Quantity));
 
         var tx = new StockTransaction
         {
             Id = Guid.NewGuid(),
-            ProductId = productId,
-            Quantity = quantity,
-            Type = type,
-            ReferenceId = referenceId,
+            ProductId = request.ProductId,
+            Quantity = request.Quantity,
+            Type = request.Type,
+            ReferenceId = request.ReferenceId,
             Date = DateTime.UtcNow,
-            PerformedBy = "System",
-            Notes = note
+            PerformedBy = request.PerformedBy ?? "System",
+            Notes = request.Note
         };
 
         await _context.StockTransactions.AddAsync(tx, cancellationToken);
