@@ -74,7 +74,7 @@ public class PurchaseOrderController : ControllerBase
                 //}
 
                 // Increase available stock and update PO line received quantity
-                var stock = productStock.Data
+                var stock = productStock.Data;
                 stock.QuantityAvailable += qtyToReceive;
                 line.QuantityReceived += qtyToReceive;
 
@@ -105,20 +105,26 @@ public class PurchaseOrderController : ControllerBase
                                     soItem.QuantityFulfilled += fulfillQty;
                                     soItem.QuantityReserved -= fulfillQty;
                                     stock.QuantityReserved -= fulfillQty;
-
-                                    _context.StockTransactions.Add(new StockTransaction
-                                    {
-                                        Id = Guid.NewGuid(),
-                                        ProductId = line.ProductId,
-                                        Quantity = fulfillQty,
-                                        Type = "FULFILL",
-                                        ReferenceId = soItem.SalesOrderId,
-                                        Date = DateTime.UtcNow,
-                                        PerformedBy = "System",
-                                        Notes = $"Auto-fulfilled for Sales Order {soItem.SalesOrderId}"
-                                    });
+                                    await _stockTransactionService.AddReceiveTransactionAsync(
+                                        "FULFILL",
+                                        line.ProductId, fulfillQty, soItem.SalesOrderId,
+                                        purchaseOrder.OrderNumber,
+                                        $"Auto-fulfilled for Sales Order {soItem.SalesOrderId}"
+                                    );
+                                    //_context.StockTransactions.Add(new StockTransaction
+                                    //{
+                                    //    Id = Guid.NewGuid(),
+                                    //    ProductId = line.ProductId,
+                                    //    Quantity = fulfillQty,
+                                    //    Type = "FULFILL",
+                                    //    ReferenceId = soItem.SalesOrderId,
+                                    //    Date = DateTime.UtcNow,
+                                    //    PerformedBy = "System",
+                                    //    Notes = $"Auto-fulfilled for Sales Order {soItem.SalesOrderId}"
+                                    //});
                                 }
-                                await _stockTransactionService.AddReceiveTransactionAsync("RECEIVE",
+                                await _stockTransactionService.AddReceiveTransactionAsync(
+                                    "RECEIVE",
                                     line.ProductId, qtyToReceive, soItem.SalesOrderId,
                                     purchaseOrder.OrderNumber,
                                     $"Reserved from received PO {purchaseOrder.OrderNumber}");

@@ -14,6 +14,8 @@ builder.Services.AddScoped<BillOfMaterialService>();
 builder.Services.AddScoped<MrpService>();
 builder.Services.AddScoped<SalesOrderService>();
 builder.Services.AddScoped<PurchaseOrderService>();
+builder.Services.AddScoped<StockTransactionService>();
+builder.Services.AddScoped<ProductStockService>();
 
 
 // Add services to the container.
