@@ -1,5 +1,5 @@
 ﻿using ERP.Data;
-using ERP.Entity;
+using ERP.Entity.Order;
 using ERP.Enum;
 
 namespace ERP.Service.Document;

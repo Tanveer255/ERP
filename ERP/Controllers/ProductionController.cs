@@ -1,5 +1,5 @@
 ﻿using ERP.Data;
-using ERP.Data.DTO;
+using ERP.Data.DTO.Order;
 using ERP.Entity;
 using ERP.Entity.Document;
 using ERP.Entity.Product;

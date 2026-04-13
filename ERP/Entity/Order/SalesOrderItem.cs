@@ -1,4 +1,7 @@
-﻿namespace ERP.Entity.Document;
+﻿using ERP.Entity.Order;
+using ERP.Entity.Product;
+
+namespace ERP.Entity.Document;
 
 public class SalesOrderItem
 {
