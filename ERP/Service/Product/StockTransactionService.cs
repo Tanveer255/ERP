@@ -26,7 +26,7 @@ public class StockTransactionService
             Id = Guid.NewGuid(),
             ProductId = request.ProductId,
             Quantity = request.Quantity,
-            Type = request.Type,
+            Type = request.Type.ToString(),
             ReferenceId = request.ReferenceId,
             Date = DateTime.UtcNow,
             PerformedBy = request.PerformedBy ?? "System",
