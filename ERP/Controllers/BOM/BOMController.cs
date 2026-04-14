@@ -1,6 +1,6 @@
 ﻿using ERP.Data;
-using ERP.Data.DTO;
-using ERP.Entity;
+using ERP.Data.DTO.BOM;
+using ERP.Entity.BOM;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;

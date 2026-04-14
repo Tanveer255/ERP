@@ -1,5 +1,5 @@
 ﻿using ERP.Data;
-using ERP.Data.DTO;
+using ERP.Data.DTO.Product;
 using ERP.Entity;
 using ERP.Entity.Product;
 using ERP.Service;

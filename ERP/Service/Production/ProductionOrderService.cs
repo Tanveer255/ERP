@@ -1,6 +1,6 @@
 ﻿using ERP.Data;
 using ERP.Data.DTO.Order;
-using ERP.Entity;
+using ERP.Entity.BOM;
 using ERP.Entity.Order;
 using ERP.Enum;
 using Microsoft.EntityFrameworkCore;

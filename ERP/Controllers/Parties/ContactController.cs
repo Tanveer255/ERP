@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace ERP.Controllers.Contact
+namespace ERP.Controllers.Parties
 {
     [Route("api/[controller]")]
     [ApiController]

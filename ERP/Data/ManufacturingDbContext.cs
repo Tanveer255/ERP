@@ -1,4 +1,5 @@
 ﻿using ERP.Entity;
+using ERP.Entity.BOM;
 using ERP.Entity.Contact;
 using ERP.Entity.Document;
 using ERP.Entity.Order;

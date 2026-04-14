@@ -1,6 +1,6 @@
 ﻿using ERP.Data;
 using ERP.Data.DTO;
-using ERP.Entity;
+using ERP.Entity.BOM;
 using ERP.Entity.Document;
 using ERP.Entity.Product;
 using ERP.Enum;
