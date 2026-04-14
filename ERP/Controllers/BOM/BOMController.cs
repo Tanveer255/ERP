@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace ERP.Controllers;
+namespace ERP.Controllers.BOM;
 [ApiController]
 [Route("api/[controller]")]
 public class BOMController : ControllerBase

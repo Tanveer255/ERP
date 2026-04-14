@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace ERP.Controllers;
+namespace ERP.Controllers.Product;
 
 [Route("api/[controller]")]
 [ApiController]

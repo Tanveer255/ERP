@@ -10,7 +10,7 @@ using ERP.Service.Production;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace ERP.Controllers;
+namespace ERP.Controllers.Order;
 
 [Route("api/[controller]")]
 [ApiController]
