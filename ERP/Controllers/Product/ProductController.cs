@@ -58,8 +58,8 @@ public class ProductController : ControllerBase
         };
 
         _context.Products.Add(product);
+        await _context.SaveChangesAsync(); // important
 
-        // 2. Create associated ProductStock with defaults
         var stock = new ProductStock
         {
             ProductId = product.Id,
@@ -76,11 +76,9 @@ public class ProductController : ControllerBase
             Shelf = "None",
             LastUpdated = DateTime.UtcNow
         };
-        _context.ProductStocks.Add(stock);
 
         var price = new Price
         {
-           
             ProductId = product.Id,
             SalePrice = dto.SalePrice,
             DiscountAmount = dto.DiscountAmount,
@@ -90,14 +88,19 @@ public class ProductController : ControllerBase
             CreatedAt = DateTime.UtcNow
         };
 
-        // 👇 Call your function here
         price.FinalPrice = Helper.GetFinalPrice(price);
 
+        _context.ProductStocks.Add(stock);
         _context.Prices.Add(price);
 
         await _context.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
+        return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, new
+        {
+            product.Id,
+            product.Name,
+            product.Code
+        });
     }
 
     // PUT: api/product/{id}
