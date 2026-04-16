@@ -1,8 +1,8 @@
-﻿using ERP.Entity.Product;
+﻿using ERP.Entity.BOM;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace ERP.Entity;
+namespace ERP.Entity.Product;
 
 public class ProductEntity
 {

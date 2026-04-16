@@ -1,6 +1,6 @@
 ﻿using ERP.Data;
 using ERP.Data.DTO;
-using ERP.Entity;
+using ERP.Entity.Product;
 using Microsoft.EntityFrameworkCore;
 
 namespace ERP.Service.Product;

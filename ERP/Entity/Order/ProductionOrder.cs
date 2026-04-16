@@ -1,9 +1,11 @@
-﻿using ERP.Entity.Document;
+﻿using ERP.Entity.BOM;
+using ERP.Entity.Document;
+using ERP.Entity.Product;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
-namespace ERP.Entity;
+namespace ERP.Entity.Order;
 
 public class ProductionOrder
 {

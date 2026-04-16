@@ -1,6 +1,8 @@
 ﻿using ERP.Entity;
+using ERP.Entity.BOM;
 using ERP.Entity.Contact;
 using ERP.Entity.Document;
+using ERP.Entity.Order;
 using ERP.Entity.Product;
 using ERP.Entity.Settings;
 using Microsoft.EntityFrameworkCore;

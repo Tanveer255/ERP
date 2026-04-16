@@ -1,4 +1,6 @@
-﻿namespace ERP.Entity.Contact;
+﻿using ERP.Entity.Product;
+
+namespace ERP.Entity.Contact;
 
 public class ProductSupplier
 {

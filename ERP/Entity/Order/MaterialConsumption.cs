@@ -2,7 +2,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
 
-namespace ERP.Entity;
+namespace ERP.Entity.Order;
 
 public class MaterialConsumption
 {

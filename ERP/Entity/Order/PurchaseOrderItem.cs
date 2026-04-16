@@ -1,4 +1,6 @@
-﻿namespace ERP.Entity.Document;
+﻿using ERP.Entity.Product;
+
+namespace ERP.Entity.Document;
 
 public class PurchaseOrderItem
 {
