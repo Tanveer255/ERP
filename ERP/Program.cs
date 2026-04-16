@@ -2,6 +2,7 @@ using ERP.Data;
 using ERP.Service;
 using ERP.Service.Document;
 using ERP.Service.Product;
+using ERP.Service.Production;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,6 +17,8 @@ builder.Services.AddScoped<SalesOrderService>();
 builder.Services.AddScoped<PurchaseOrderService>();
 builder.Services.AddScoped<StockTransactionService>();
 builder.Services.AddScoped<ProductStockService>();
+builder.Services.AddScoped<ProductionOrderService>();
+builder.Services.AddScoped<ProductionOperationService>();
 
 
 // Add services to the container.

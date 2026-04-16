@@ -7,5 +7,6 @@ public enum ProductionStatus
     InProgress,
     Completed,
     Cancelled,
-    Pending
+    Pending,
+    ComponentsReceived
 }
