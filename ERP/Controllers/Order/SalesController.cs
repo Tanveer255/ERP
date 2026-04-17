@@ -272,11 +272,11 @@ public class SalesController : ControllerBase
 
                 var shipQty = Math.Min(remainingToShip, availableToShip);
 
-                // ✅ Deduct from ProductStock reserved quantity
+                // Deduct from ProductStock reserved quantity
                 stock.QuantityReserved -= shipQty;
                 _context.ProductStocks.Update(stock); // Ensure EF tracks the change
 
-                // ✅ Update SO item quantities
+                // Update SO item quantities
                 item.QuantityFulfilled += shipQty;
                 item.QuantityReserved -= shipQty;
 
@@ -285,7 +285,7 @@ public class SalesController : ControllerBase
                              : item.QuantityFulfilled > 0 ? "Partial"
                              : "Pending";
 
-                // ✅ Log stock transaction
+                // Log stock transaction
                 _context.StockTransactions.Add(new StockTransaction
                 {
                     Id = Guid.NewGuid(),

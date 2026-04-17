@@ -1,6 +1,7 @@
 ﻿using ERP.Data;
 using ERP.Data.Request;
 using ERP.Entity;
+using ERP.Entity.Document;
 using ERP.Entity.Product;
 using ERP.Enum;
 using ERP.Service;
@@ -54,7 +55,7 @@ public class PurchaseOrderController : ControllerBase
         {
             var affectedSalesOrderIds = new HashSet<Guid>();
             var purchaseOrder = poResult.Data;
-
+            //var saleOrderItems = purchaseOrder?.SalesOrders.SelectMany(so => so.Items).ToList();
             foreach (var line in purchaseOrder.Items)
             {
                 var qtyToReceive = line.QuantityRequested - line.QuantityReceived;
