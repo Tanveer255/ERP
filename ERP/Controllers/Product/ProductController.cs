@@ -2,7 +2,9 @@
 using ERP.Data.DTO.Product;
 using ERP.Entity;
 using ERP.Entity.Product;
+using ERP.Repository;
 using ERP.Service;
+using ERP.Service.Product;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,20 +13,17 @@ namespace ERP.Controllers.Product;
 
 [Route("api/[controller]")]
 [ApiController]
-public class ProductController : ControllerBase
+public class ProductController(IProductService productService,IUnitOfWork unitOfWork) : ControllerBase
 {
-    private readonly ManufacturingDbContext _context;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IProductService _productService;
 
-    public ProductController(ManufacturingDbContext context)
-    {
-        _context = context;
-    }
 
     // GET: api/product
     [HttpGet]
     public async Task<IActionResult> GetProducts()
     {
-        var products = await _context.Products
+        var products = await _unitOfWork.Context.Products
             .Include(p => p.BOMs) // eager load BOMs if needed
             .ToListAsync();
         return Ok(products);
@@ -34,7 +33,7 @@ public class ProductController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> GetProduct(Guid id)
     {
-        var product = await _context.Products
+        var product = await _unitOfWork.Context.Products
             .Include(p => p.BOMs)
             .FirstOrDefaultAsync(p => p.Id == id);
 
@@ -57,8 +56,8 @@ public class ProductController : ControllerBase
             IsManufactured = dto.IsManufactured
         };
 
-        _context.Products.Add(product);
-        await _context.SaveChangesAsync(); // important
+       await _productService.Add(product);
+        await _unitOfWork.CommitAsync();
 
         var stock = new ProductStock
         {
@@ -90,10 +89,10 @@ public class ProductController : ControllerBase
 
         price.FinalPrice = Helper.GetFinalPrice(price);
 
-        _context.ProductStocks.Add(stock);
-        _context.Prices.Add(price);
+        _unitOfWork.Context.ProductStocks.Add(stock);
+        _unitOfWork.Context.Prices.Add(price);
 
-        await _context.SaveChangesAsync();
+        await _unitOfWork.CommitAsync();
 
         return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, new
         {
@@ -107,7 +106,7 @@ public class ProductController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateProduct(Guid id, UpdateProductDto dto)
     {
-        var product = await _context.Products.FindAsync(id);
+        var product = await _unitOfWork.Context.Products.FindAsync(id);
         if (product == null)
             return NotFound();
 
@@ -116,7 +115,7 @@ public class ProductController : ControllerBase
         product.Unit = dto.Unit;
         product.IsManufactured = dto.IsManufactured;
 
-        await _context.SaveChangesAsync();
+        await _unitOfWork.CommitAsync();
 
         return NoContent();
     }
@@ -125,12 +124,12 @@ public class ProductController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteProduct(Guid id)
     {
-        var product = await _context.Products.FindAsync(id);
+        var product = await _unitOfWork.Context.Products.FindAsync(id);
         if (product == null)
             return NotFound();
 
-        _context.Products.Remove(product);
-        await _context.SaveChangesAsync();
+        _unitOfWork.Context.Products.Remove(product);
+        await _unitOfWork.CommitAsync();
 
         return NoContent();
     }
