@@ -42,7 +42,11 @@ public class ProductController(IProductService productService,IUnitOfWork unitOf
 
         return Ok(product);
     }
-
+    /// <summary>
+    /// CreateProduct
+    /// </summary>
+    /// <param name="dto"></param>
+    /// <returns></returns>
     // POST: api/product
     [HttpPost]
     public async Task<IActionResult> CreateProduct(CreateProductDto dto)
