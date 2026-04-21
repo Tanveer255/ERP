@@ -3,6 +3,7 @@ using ERP.Data.DTO.Product;
 using ERP.Entity;
 using ERP.Entity.Product;
 using ERP.Repository;
+using ERP.Repository.Product;
 using ERP.Service;
 using ERP.Service.Product;
 using Microsoft.AspNetCore.Http;
@@ -13,11 +14,11 @@ namespace ERP.Controllers.Product;
 
 [Route("api/[controller]")]
 [ApiController]
-public class ProductController(IProductService productService,IUnitOfWork unitOfWork) : ControllerBase
+public class ProductController(IProductService productService,IUnitOfWork unitOfWork,IProductRepository productRepository) : ControllerBase
 {
-    private readonly IUnitOfWork _unitOfWork;
-    private readonly IProductService _productService;
-
+    private readonly IUnitOfWork _unitOfWork = unitOfWork;
+    private readonly IProductService _productService = productService;
+    private readonly IProductRepository _productRepository = productRepository;
 
     // GET: api/product
     [HttpGet]
@@ -60,7 +61,7 @@ public class ProductController(IProductService productService,IUnitOfWork unitOf
             IsManufactured = dto.IsManufactured
         };
 
-       await _productService.Add(product);
+       await _productRepository.Add(product);
         await _unitOfWork.CommitAsync();
 
         var stock = new ProductStock

@@ -1,5 +1,8 @@
 using ERP.Data;
+using ERP.Repository;
+using ERP.Repository.Product;
 using ERP.Service;
+using ERP.Service.Common;
 using ERP.Service.Document;
 using ERP.Service.Product;
 using ERP.Service.Production;
@@ -10,7 +13,13 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<ManufacturingDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
-builder.Services.AddScoped<ProductService>();
+builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
+builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+builder.Services.AddScoped(typeof(ICrudService<>), typeof(CrudService<>));
+builder.Services.AddTransient<IUnitOfWork, UnitOfWork>();
+builder.Services.AddTransient(typeof(IRepository<>), typeof(Repository<>));
+builder.Services.AddTransient(typeof(ICrudService<>), typeof(CrudService<>));
+builder.Services.AddTransient<IProductService,ProductService>();
 builder.Services.AddScoped<BillOfMaterialService>();
 builder.Services.AddScoped<MrpService>();
 builder.Services.AddScoped<SalesOrderService>();
@@ -19,6 +28,7 @@ builder.Services.AddScoped<StockTransactionService>();
 builder.Services.AddScoped<ProductStockService>();
 builder.Services.AddScoped<ProductionOrderService>();
 builder.Services.AddScoped<ProductionOperationService>();
+builder.Services.AddTransient<IProductRepository,ProductRepository>();
 
 
 // Add services to the container.
