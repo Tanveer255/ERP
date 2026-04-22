@@ -45,7 +45,7 @@ public class ProductionController : ControllerBase
         if (order.Status != nameof(ProductionStatus.Ready))
             return BadRequest("Not ready");
 
-        // ✅ NEW: Run MRP here
+        // NEW: Run MRP here
         await _mrpService.RunMrpForProductionShortage(orderId);
 
         var firstOp = await _context.ProductionOperations
@@ -110,36 +110,6 @@ public class ProductionController : ControllerBase
             await transaction.RollbackAsync();
             return StatusCode(500, ex.Message);
         }
-    }
-    #endregion
-
-    #region Start Production
-    [HttpPost("start-production")]
-    public async Task<IActionResult> StartProduction(Guid orderId)
-    {
-        var order = await _context.ProductionOrders.FindAsync(orderId);
-        if (order == null) return NotFound();
-        if (order.Status != nameof(ProductionStatus.Ready)) return BadRequest("Not ready");
-
-        var firstOp = await _context.ProductionOperations
-            .Where(x => x.OrderId == orderId)
-            .OrderBy(x => x.SequenceNumber)
-            .FirstOrDefaultAsync();
-
-        var success = await Helper.ExecuteWithRetryAsync(async () =>
-        {
-            order.Status = nameof(ProductionStatus.InProgress);
-            order.ActualStartDate = DateTime.UtcNow;
-
-            if (firstOp != null)
-                firstOp.Status = nameof(ProductionStatus.InProgress);
-
-            await _context.SaveChangesAsync();
-        });
-
-        if (!success) return Conflict("Concurrency conflict");
-
-        return Ok("Production started");
     }
     #endregion
 
