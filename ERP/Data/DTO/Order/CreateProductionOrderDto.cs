@@ -3,7 +3,6 @@
 public class CreateProductionOrderDto
 {
     public Guid ProductId { get; set; }
-    public Guid BillOfMaterialId { get; set; }
     public decimal QuantityRequested { get; set; }
     public DateTime StartDate { get; set; }
     public DateTime FinishDate { get; set; }

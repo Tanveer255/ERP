@@ -40,19 +40,17 @@ public class ProductionController : ControllerBase
     [HttpPost("create-production-order")]
     public async Task<IActionResult> CreateOrder([FromBody] CreateProductionOrderDto dto)
     {
-        if (dto.ProductId == Guid.Empty)
-            return BadRequest("ProductId is required.");
-
         if (dto.QuantityRequested <= 0)
             return BadRequest("Quantity must be greater than zero.");
-
-        var product = await _context.Products.FindAsync(dto.ProductId);
-        if (product == null)
-            return NotFound("Product not found.");
 
         var bom = await _context.BillOfMaterials
             .Include(b => b.Items)
             .FirstOrDefaultAsync(b => b.ProductId == dto.ProductId);
+
+        var product = await _context.Products.FindAsync(bom.ProductId);
+        if (product == null)
+            return NotFound("Product not found.");
+
 
         if (bom == null || !bom.Items.Any())
             return BadRequest("No BOM defined.");
@@ -65,7 +63,7 @@ public class ProductionController : ControllerBase
 
             var supplierOrders = new Dictionary<Guid, PurchaseOrder>();
 
-            await _mrpService.RunMrpForSalesOrder(order.Id);
+            //await _mrpService.RunMrpForProductionOrder(order.Id);
 
             _context.PurchaseOrders.AddRange(supplierOrders.Values);
 
@@ -93,10 +91,8 @@ public class ProductionController : ControllerBase
     [HttpPost("issue-material")]
     public async Task<IActionResult> IssueMaterials(Guid orderId)
     {
-        var order = await _context.ProductionOrders
-            .Include(o => o.BillOfMaterials)
-            .ThenInclude(b => b.Items)
-            .FirstOrDefaultAsync(o => o.Id == orderId);
+        var orderResult = await _productionOrderService.LoadProductionOrderWithItems(orderId);
+        var order = orderResult.Data;
 
         if (order == null) return NotFound("Order not found");
         if (order.Status != nameof(ProductionStatus.Planned))

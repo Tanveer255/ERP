@@ -5,6 +5,7 @@ using ERP.Entity.Document;
 using ERP.Entity.Order;
 using ERP.Entity.Product;
 using ERP.Enum;
+using ERP.Service.Production;
 using Microsoft.EntityFrameworkCore;
 using System;
 
@@ -14,11 +15,14 @@ public class MrpService
 {
     private readonly ManufacturingDbContext _context;
     private readonly SalesOrderService _salesOrderService;
+    private readonly ProductionOrderService _productionOrderService;
+    private readonly PurchaseOrderService _purchaseOrderService;
 
-    public MrpService(ManufacturingDbContext context, SalesOrderService salesOrderService)
+    public MrpService(ManufacturingDbContext context, SalesOrderService salesOrderService,ProductionOrderService productionOrderService)
     {
         _context = context;
         _salesOrderService = salesOrderService;
+        _productionOrderService = productionOrderService;
     }
 
     public async Task RunMrpForSalesOrder(Guid salesOrderId)
@@ -42,6 +46,28 @@ public class MrpService
         }
 
         Helper.UpdateSalesOrderStatus(salesOrder);
+        await _context.SaveChangesAsync();
+    }
+    public async Task RunMrpForProductionOrder(Guid productionOrderId)
+    {
+        var productionOrderResponse = await _productionOrderService.LoadProductionOrderWithItems(productionOrderId);
+        if (!productionOrderResponse.IsSuccess) throw new Exception(productionOrderResponse.Message);
+
+        var productionOrder = productionOrderResponse.Data ?? throw new Exception("production order not found.");
+
+        var purchaseOrdersBySupplier = new Dictionary<Guid, PurchaseOrder>();
+        var processedProducts = new HashSet<Guid>(); // NEW: track products already planned
+
+        //foreach (var item in productionOrder.Items)
+        //{
+        //    var remainingQty = await ReserveStockForItemAsync(item);
+
+        //    if (remainingQty > 0)
+        //    {
+        //        await PlanShortageAsync(item, remainingQty, purchaseOrdersBySupplier, processedProducts);
+        //    }
+        //}
+
         await _context.SaveChangesAsync();
     }
 

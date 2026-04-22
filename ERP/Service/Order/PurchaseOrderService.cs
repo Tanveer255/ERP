@@ -41,7 +41,7 @@ public class PurchaseOrderService
 
             stock.QuantityAvailable += item.QuantityReceived;
 
-            // 2️⃣ 🔥 TRIGGER SALES ORDER UPDATE
+            // 2️⃣  TRIGGER SALES ORDER UPDATE
             if (item.SalesOrderItem != null)
             {
                 await _salesOrderService.UpdateSalesOrderStock(

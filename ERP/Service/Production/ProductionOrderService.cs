@@ -1,6 +1,8 @@
 ﻿using ERP.Data;
+using ERP.Data.DTO;
 using ERP.Data.DTO.Order;
 using ERP.Entity.BOM;
+using ERP.Entity.Document;
 using ERP.Entity.Order;
 using ERP.Enum;
 using Microsoft.EntityFrameworkCore;
@@ -14,12 +16,23 @@ public class ProductionOrderService
     {
             _context = manufacturingDbContext;
     }
+    public async Task<ResultDTO<ProductionOrder>> LoadProductionOrderWithItems(Guid orderId)
+    {
+        var order = await _context.ProductionOrders
+           .Include(o => o.BillOfMaterials)
+           .ThenInclude(b => b.Items)
+           .FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order == null)
+            return ResultDTO<ProductionOrder>.Failure("Production order not found.");
+        return ResultDTO<ProductionOrder>.Success(order);
+    }
     public async Task<ProductionOrder> CreateProductionOrderAsync(CreateProductionOrderDto dto, BillOfMaterial bom)
     {
+        var shortId = Guid.NewGuid().ToString("N")[..8];
         var order = new ProductionOrder
         {
             Id = Guid.NewGuid(),
-            OrderNumber = $"PROD-{Guid.NewGuid():N8}",
+            OrderNumber = $"PROD-{shortId}",
             ProductId = dto.ProductId,
             BillOfMaterialId = bom.Id,
             PlannedQuantity = dto.QuantityRequested,
