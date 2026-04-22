@@ -37,53 +37,36 @@ public class ProductionController : ControllerBase
     }
 
     #region Create Production Order
-    [HttpPost("create-production-order")]
-    public async Task<IActionResult> CreateOrder([FromBody] CreateProductionOrderDto dto)
+    [HttpPost("start-production")]
+    public async Task<IActionResult> StartProduction(Guid orderId)
     {
-        if (dto.QuantityRequested <= 0)
-            return BadRequest("Quantity must be greater than zero.");
+        var order = await _context.ProductionOrders.FindAsync(orderId);
+        if (order == null) return NotFound();
+        if (order.Status != nameof(ProductionStatus.Ready))
+            return BadRequest("Not ready");
 
-        var bom = await _context.BillOfMaterials
-            .Include(b => b.Items)
-            .FirstOrDefaultAsync(b => b.ProductId == dto.ProductId);
+        // ✅ NEW: Run MRP here
+        await _mrpService.RunMrpForProductionShortage(orderId);
 
-        var product = await _context.Products.FindAsync(bom.ProductId);
-        if (product == null)
-            return NotFound("Product not found.");
+        var firstOp = await _context.ProductionOperations
+            .Where(x => x.OrderId == orderId)
+            .OrderBy(x => x.SequenceNumber)
+            .FirstOrDefaultAsync();
 
-
-        if (bom == null || !bom.Items.Any())
-            return BadRequest("No BOM defined.");
-
-        using var transaction = await _context.Database.BeginTransactionAsync();
-
-        try
+        var success = await Helper.ExecuteWithRetryAsync(async () =>
         {
-            var order = await _productionOrderService.CreateProductionOrderAsync(dto, bom);
+            order.Status = nameof(ProductionStatus.InProgress);
+            order.ActualStartDate = DateTime.UtcNow;
 
-            var supplierOrders = new Dictionary<Guid, PurchaseOrder>();
-
-            //await _mrpService.RunMrpForProductionOrder(order.Id);
-
-            _context.PurchaseOrders.AddRange(supplierOrders.Values);
-
-            _productionOperationService.AddDefaultOperations(order.Id);
+            if (firstOp != null)
+                firstOp.Status = nameof(ProductionStatus.InProgress);
 
             await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
+        });
 
-            return Ok(new
-            {
-                order.Id,
-                order.OrderNumber,
-                order.Status
-            });
-        }
-        catch (Exception ex)
-        {
-            await transaction.RollbackAsync();
-            return StatusCode(500, ex.Message);
-        }
+        if (!success) return Conflict("Concurrency conflict");
+
+        return Ok("Production started");
     }
     #endregion
 

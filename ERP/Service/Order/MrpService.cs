@@ -48,25 +48,46 @@ public class MrpService
         Helper.UpdateSalesOrderStatus(salesOrder);
         await _context.SaveChangesAsync();
     }
-    public async Task RunMrpForProductionOrder(Guid productionOrderId)
+    public async Task RunMrpForProductionShortage(Guid productionOrderId)
     {
-        var productionOrderResponse = await _productionOrderService.LoadProductionOrderWithItems(productionOrderId);
-        if (!productionOrderResponse.IsSuccess) throw new Exception(productionOrderResponse.Message);
+        var orderResponse = await _productionOrderService.LoadProductionOrderWithItems(productionOrderId);
+        if (!orderResponse.IsSuccess)
+            throw new Exception(orderResponse.Message);
 
-        var productionOrder = productionOrderResponse.Data ?? throw new Exception("production order not found.");
+        var order = orderResponse.Data ?? throw new Exception("Production order not found.");
+
+        var bom = await _context.BillOfMaterials
+            .Include(b => b.Items)
+            .FirstOrDefaultAsync(b => b.Id == order.BillOfMaterialId);
+
+        if (bom == null) return;
 
         var purchaseOrdersBySupplier = new Dictionary<Guid, PurchaseOrder>();
-        var processedProducts = new HashSet<Guid>(); // NEW: track products already planned
 
-        //foreach (var item in productionOrder.Items)
-        //{
-        //    var remainingQty = await ReserveStockForItemAsync(item);
+        foreach (var item in bom.Items)
+        {
+            var requiredQty = item.Quantity * order.PlannedQuantity;
 
-        //    if (remainingQty > 0)
-        //    {
-        //        await PlanShortageAsync(item, remainingQty, purchaseOrdersBySupplier, processedProducts);
-        //    }
-        //}
+            var stock = await _context.ProductStocks
+                .Where(s => s.ProductId == item.ComponentId)
+                .Select(s => s.QuantityAvailable)
+                .FirstOrDefaultAsync();
+
+            var shortage = requiredQty - stock;
+
+            if (shortage > 0)
+            {
+                await CreatePurchaseOrder(
+                    new SalesOrderItem
+                    {
+                        ProductId = item.ComponentId,
+                        Id = Guid.Empty // no SO link
+                    },
+                    shortage,
+                    purchaseOrdersBySupplier
+                );
+            }
+        }
 
         await _context.SaveChangesAsync();
     }
