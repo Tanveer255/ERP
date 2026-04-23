@@ -1,4 +1,5 @@
-﻿using ERP.Entity.Product;
+﻿using ERP.Entity.Order;
+using ERP.Entity.Product;
 
 namespace ERP.Entity.Document;
 
@@ -21,4 +22,6 @@ public class PurchaseOrderItem
     // Navigation
     public PurchaseOrder PurchaseOrder { get; set; }
     public ProductEntity Product { get; set; }
+    public Guid? ProductionOrderId { get; set; }
+    public ProductionOrder ProductionOrder { get; set; }
 }
