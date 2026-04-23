@@ -52,7 +52,7 @@ public class PurchaseOrderService
 
         await _context.SaveChangesAsync();
     }
-    private async Task<ProductStock> GetStock(Guid productId)
+    public async Task<ProductStock> GetStock(Guid productId)
     {
         var stock = await _context.ProductStocks
             .FirstOrDefaultAsync(s => s.ProductId == productId);
