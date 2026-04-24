@@ -21,7 +21,7 @@ public class PurchaseOrderController : ControllerBase
     private readonly PurchaseOrderService _purchaseOrderService;
     private readonly SalesOrderService _salesOrderService;
     private readonly MrpService _mrpService;
-    private readonly ProductService _productService;
+    private readonly IProductService _productService;
     private readonly StockTransactionService _stockTransactionService;
     private readonly ProductStockService _productStockService;
     public PurchaseOrderController(
@@ -29,7 +29,7 @@ public class PurchaseOrderController : ControllerBase
         PurchaseOrderService purchaseOrderService,
         SalesOrderService salesOrderService,
         MrpService mrpService,
-        ProductService productService,
+        IProductService productService,
         StockTransactionService stockTransactionService,
         ProductStockService productStockService
         )
