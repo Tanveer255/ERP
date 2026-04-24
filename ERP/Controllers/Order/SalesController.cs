@@ -1,6 +1,7 @@
 ﻿using ERP.Data;
 using ERP.Data.DTO;
 using ERP.Data.DTO.Document;
+using ERP.Data.DTO.MRP;
 using ERP.Entity;
 using ERP.Entity.Contact;
 using ERP.Entity.Document;

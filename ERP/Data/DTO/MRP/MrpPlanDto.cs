@@ -1,4 +1,4 @@
-﻿namespace ERP.Data.DTO;
+﻿namespace ERP.Data.DTO.MRP;
 
 public class MrpPlanDto
 {
