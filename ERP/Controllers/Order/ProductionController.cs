@@ -128,9 +128,12 @@ public class ProductionController : ControllerBase
 
             var stock = await _purchaseOrderService.GetStock(item.ComponentId);
 
-            if (stock.QuantityReserved < requiredQty)
+            var availableToUse = stock.QuantityReserved;
+
+            if (availableToUse < requiredQty)
             {
-                return BadRequest($"Insufficient reserved stock for component {item.ComponentId}. Run MRP/Reserve first.");
+                return BadRequest(
+                    $"Insufficient reserved stock for component {item.ComponentId}. Run MRP/Receipt first.");
             }
         }
 
@@ -179,11 +182,9 @@ public class ProductionController : ControllerBase
     {
         var order = await _context.ProductionOrders.FindAsync(orderId);
         if (order == null) return NotFound();
+
         if (order.Status != nameof(ProductionStatus.Ready))
             return BadRequest("Not ready");
-
-        // NEW: Run MRP here
-        await _mrpService.RunMrpForProductionShortage(orderId);
 
         var firstOp = await _context.ProductionOperations
             .Where(x => x.OrderId == orderId)
@@ -238,14 +239,45 @@ public class ProductionController : ControllerBase
                 .Where(x => x.BillOfMaterialId == order.BillOfMaterialId)
                 .ToListAsync();
 
+            // ======================================
+            // 1. CONSUME COMPONENTS (Reserved Stock)
+            // ======================================
             foreach (var item in bomItems)
             {
                 var qty = item.Quantity * order.PlannedQuantity;
-                await _purchaseOrderService.AdjustStock(order.Id, item.ComponentId, qty, StockTransactionType.CONSUME);
+
+                var success = await _purchaseOrderService.AdjustStock(
+                    order.Id,
+                    item.ComponentId,
+                    qty,
+                    StockTransactionType.ISSUE // Reserved → InProduction
+                );
+
+                if (!success)
+                    throw new Exception($"Insufficient reserved stock for {item.ComponentId}");
             }
 
-            await _purchaseOrderService.AdjustStock(order.Id, order.ProductId, order.PlannedQuantity, StockTransactionType.RECEIPT);
+            // ======================================
+            // 2. PRODUCE FINISHED GOODS
+            // ======================================
 
+            var finishedStock = await _context.ProductStocks
+                .FirstOrDefaultAsync(x => x.ProductId == order.ProductId);
+
+            if (finishedStock == null)
+                throw new Exception("Finished product stock not found");
+
+            finishedStock.QuantityAvailable += order.PlannedQuantity;
+            finishedStock.LastUpdated = DateTime.UtcNow;
+
+            // optional: stock transaction log
+            _purchaseOrderService.AddStockTransaction(order.Id, order.ProductId,
+                order.PlannedQuantity,
+                StockTransactionType.RECEIPT);
+
+            // ======================================
+            // 3. UPDATE ORDER
+            // ======================================
             order.Status = nameof(ProductionStatus.Completed);
             order.ProducedQuantity = order.PlannedQuantity;
 

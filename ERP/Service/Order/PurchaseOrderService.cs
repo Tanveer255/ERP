@@ -62,7 +62,11 @@ public class PurchaseOrderService
 
         return stock;
     }
-    public async Task<bool> AdjustStock(Guid orderId, Guid productId, decimal qty, StockTransactionType type)
+    public async Task<bool> AdjustStock(
+    Guid orderId,
+    Guid productId,
+    decimal qty,
+    StockTransactionType type)
     {
         var stock = await GetStock(productId);
 
@@ -70,20 +74,34 @@ public class PurchaseOrderService
         {
             case StockTransactionType.RESERVE:
                 if (stock.QuantityAvailable < qty) return false;
+
                 stock.QuantityAvailable -= qty;
                 stock.QuantityReserved += qty;
                 break;
+
             case StockTransactionType.ISSUE:
                 if (stock.QuantityReserved < qty) return false;
+
                 stock.QuantityReserved -= qty;
                 stock.QuantityInProduction += qty;
                 break;
+
             case StockTransactionType.CONSUME:
                 stock.QuantityInProduction -= qty;
                 break;
+
             case StockTransactionType.RECEIPT:
+                // 1. Increase stock
                 stock.QuantityAvailable += qty;
-                break;
+
+                // 2. Save transaction first (important for consistency)
+                AddStockTransaction(orderId, productId, qty, type);
+                await _context.SaveChangesAsync();
+
+                // 3. AUTO RESERVATION TRIGGER (IMPORTANT PART)
+                await AutoAllocateStock(productId);
+
+                return true;
         }
 
         AddStockTransaction(orderId, productId, qty, type);
@@ -111,7 +129,7 @@ public class PurchaseOrderService
             UnitPrice = supplier.Price
         });
     }
-    private void AddStockTransaction(Guid orderId, Guid productId, decimal qty, StockTransactionType type)
+    public void AddStockTransaction(Guid orderId, Guid productId, decimal qty, StockTransactionType type)
     {
         _context.StockTransactions.Add(new StockTransaction
         {
@@ -139,5 +157,67 @@ public class PurchaseOrderService
             };
         }
         return supplierOrders[supplierId];
+    }
+    public async Task AutoAllocateStock(Guid productId)
+    {
+        var stock = await _context.ProductStocks
+            .FirstOrDefaultAsync(x => x.ProductId == productId);
+
+        if (stock == null || stock.QuantityAvailable <= 0)
+            return;
+
+        var available = stock.QuantityAvailable;
+
+        var demands = await GetComponentDemand(productId);
+
+        foreach (var d in demands)
+        {
+            if (available <= 0)
+                break;
+
+            var allocate = Math.Min(d.RequiredQty, available);
+
+            if (allocate <= 0)
+                continue;
+
+            stock.QuantityAvailable -= allocate;
+            stock.QuantityReserved += allocate;
+
+            available -= allocate;
+        }
+
+        stock.LastUpdated = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+    }
+    private async Task<List<(Guid ProductId, decimal RequiredQty)>> GetComponentDemand(Guid productId)
+    {
+        var orders = await _context.ProductionOrders
+            .Where(o => o.Status == nameof(ProductionStatus.Planned)
+                     || o.Status == nameof(ProductionStatus.Ready))
+            .ToListAsync();
+
+        var result = new List<(Guid, decimal)>();
+
+        foreach (var order in orders)
+        {
+            var bom = await _context.BillOfMaterials
+                .Include(b => b.Items)
+                .FirstOrDefaultAsync(b => b.ProductId == order.ProductId);
+
+            if (bom == null) continue;
+
+            foreach (var item in bom.Items)
+            {
+                if (item.ComponentId != productId)
+                    continue;
+
+                var required = item.Quantity * order.PlannedQuantity;
+
+                result.Add((item.ComponentId, required));
+            }
+        }
+
+        return result;
     }
 }
