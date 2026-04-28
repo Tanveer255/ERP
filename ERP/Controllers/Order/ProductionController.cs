@@ -97,10 +97,10 @@ public class ProductionController : ControllerBase
         if (order.Status != nameof(ProductionStatus.Planned))
             return BadRequest("Order must be in Planned state");
 
-        // ✅ Run MRP (planning phase)
+        // Run MRP (planning phase)
         await _mrpService.RunMrpForProductionShortage(orderId);
 
-        // ✅ Check stock after MRP
+        // Check stock after MRP
         var hasStock = await _productStockService.CheckStockAvailability(orderId);
 
         if (!hasStock)
@@ -121,7 +121,7 @@ public class ProductionController : ControllerBase
         if (order.Status != nameof(ProductionStatus.Planned))
             return BadRequest("Order must be Planned");
 
-        // ✅ NEW: Validate reserved stock BEFORE issuing
+        // NEW: Validate reserved stock BEFORE issuing
         foreach (var item in order.BillOfMaterials.Items)
         {
             var requiredQty = item.Quantity * order.PlannedQuantity;
