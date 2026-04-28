@@ -1,5 +1,6 @@
 using ERP.Data;
 using ERP.Repository;
+using ERP.Repository.Contact;
 using ERP.Repository.Product;
 using ERP.Service;
 using ERP.Service.Common;
@@ -31,6 +32,7 @@ builder.Services.AddScoped<ProductionOrderService>();
 builder.Services.AddScoped<ProductionOperationService>();
 builder.Services.AddTransient<IProductRepository,ProductRepository>();
 builder.Services.AddTransient<IContactService, ContactService>();
+builder.Services.AddTransient<IContactRepository, ContactRepository>();
 
 
 // Add services to the container.
