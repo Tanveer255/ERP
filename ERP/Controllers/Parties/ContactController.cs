@@ -16,6 +16,11 @@ namespace ERP.Controllers.Parties
         {
             _context = context;
         }
+        /// <summary>
+        /// create supplier with products and pricing information. This will create a new contact of type supplier and link it to the specified products with their prices and lead times.
+        /// </summary>
+        /// <param name="dto"></param>
+        /// <returns></returns>
         [HttpPost("create-supplier")]
         public async Task<IActionResult> CreateSupplier([FromBody]CreateSupplierDto dto)
         {
