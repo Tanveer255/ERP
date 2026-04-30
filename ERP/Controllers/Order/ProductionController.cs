@@ -114,6 +114,11 @@ public class ProductionController : ControllerBase
     }
 
     #region Issue Materials
+    /// <summary>
+    /// issue materials for production: validate reserved stock, adjust inventory, update order status to Ready
+    /// </summary>
+    /// <param name="orderId"></param>
+    /// <returns></returns>
     [HttpPost("issue-material")]
     public async Task<IActionResult> IssueMaterials(Guid orderId)
     {
