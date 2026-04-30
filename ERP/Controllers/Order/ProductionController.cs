@@ -87,7 +87,11 @@ public class ProductionController : ControllerBase
         }
     }
     #endregion
-
+    /// <summary>
+    /// prepare production: run MRP, create purchase orders if needed, check stock availability
+    /// </summary>
+    /// <param name="orderId"></param>
+    /// <returns></returns>
     [HttpPost("prepare-production")]
     public async Task<IActionResult> PrepareProduction(Guid orderId)
     {
