@@ -7,6 +7,7 @@ using ERP.Enum;
 using ERP.Service;
 using ERP.Service.Document;
 using ERP.Service.Product;
+using ERP.Service.Production;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -24,6 +25,7 @@ public class PurchaseOrderController : ControllerBase
     private readonly IProductService _productService;
     private readonly StockTransactionService _stockTransactionService;
     private readonly ProductStockService _productStockService;
+    private readonly ProductionOrderService _productionOrderService;
     public PurchaseOrderController(
         ManufacturingDbContext context,
         PurchaseOrderService purchaseOrderService,
@@ -31,7 +33,8 @@ public class PurchaseOrderController : ControllerBase
         MrpService mrpService,
         IProductService productService,
         StockTransactionService stockTransactionService,
-        ProductStockService productStockService
+        ProductStockService productStockService,
+        ProductionOrderService productionOrderService
         )
     {
         _context = context;
@@ -41,6 +44,7 @@ public class PurchaseOrderController : ControllerBase
         _productService = productService;
         _stockTransactionService = stockTransactionService;
         _productStockService = productStockService;
+        _productionOrderService = productionOrderService;
     }
 
     [HttpPost("receive-purchase-order")]
@@ -85,11 +89,11 @@ public class PurchaseOrderController : ControllerBase
 
                 if (isStockItem)
                 {
-                    var result = await _salesOrderService.GetPendingSaleOrderItems(line.ProductId);
+                    var saleOrderData = await _salesOrderService.GetPendingSaleOrderItems(line.ProductId);
 
-                    if (result.IsSuccess)
+                    if (saleOrderData.IsSuccess)
                     {
-                        foreach (var soItem in result.Data)
+                        foreach (var soItem in saleOrderData.Data)
                         {
                             var reserveNeeded = soItem.QuantityRequested - soItem.QuantityReserved - soItem.QuantityFulfilled;
 
@@ -148,35 +152,48 @@ public class PurchaseOrderController : ControllerBase
                                 break;
                         }
                     }
+                    //var productionOrder = await _productionOrderService.LoadProductionOrderWithItems(line.ProductId);
+                    //if (productionOrder.IsSuccess)
+                    //{
+                    //    if (productionOrder.Data != null)
+                    //    {
+                    //        foreach (var item in productionOrder.Data.BillOfMaterials.Items)
+                    //        {
+                    //            if (item.ComponentId == line.ProductId)
+                    //            {
+                    //               // await _mrpService.RunMrpForProductionShortage(productionOrder.Data.Id);
+                    //                break;
+                    //            }
+                    //        }
+                    //    }
+                    //}
+
+                    // =========================
+                    // UPDATE PO STATUS
+                    // =========================
+                    purchaseOrder.Status = PurchaseOrderStatus.Received;
+                    purchaseOrder.ExpectedDate = DateTime.UtcNow;
+
+                    await _context.SaveChangesAsync();
+
+                    // =========================
+                    // TRIGGER MRP
+                    // =========================
+                    foreach (var soId in affectedSalesOrderIds)
+                    {
+                        await _mrpService.RunMrpForSalesOrder(soId);
+                    }
+
+                    await transaction.CommitAsync();
+
+                    return Ok(new
+                    {
+                        purchaseOrder.Id,
+                        purchaseOrder.OrderNumber,
+                        Status = purchaseOrder.Status.ToString(),
+                        ReceivedDate = DateTime.UtcNow
+                    });
                 }
-            }
-
-            // =========================
-            // UPDATE PO STATUS
-            // =========================
-            purchaseOrder.Status = PurchaseOrderStatus.Received;
-            purchaseOrder.ExpectedDate = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-
-            // =========================
-            // TRIGGER MRP
-            // =========================
-            foreach (var soId in affectedSalesOrderIds)
-            {
-                await _mrpService.RunMrpForSalesOrder(soId);
-            }
-
-            await transaction.CommitAsync();
-
-            return Ok(new
-            {
-                purchaseOrder.Id,
-                purchaseOrder.OrderNumber,
-                Status = purchaseOrder.Status.ToString(),
-                ReceivedDate = DateTime.UtcNow
-            });
-        }
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
