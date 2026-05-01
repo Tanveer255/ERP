@@ -191,6 +191,11 @@ public class ProductionController : ControllerBase
     #endregion
 
     #region Create Production Order
+    /// <summary>
+    /// start production: validate order status, set actual start date, update first operation to InProgress, handle concurrency with retry
+    /// </summary>
+    /// <param name="orderId"></param>
+    /// <returns></returns>
     [HttpPost("start-production")]
     public async Task<IActionResult> StartProduction(Guid orderId)
     {
