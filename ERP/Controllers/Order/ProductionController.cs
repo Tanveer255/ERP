@@ -40,6 +40,11 @@ public class ProductionController : ControllerBase
         _productStockService = productStockService;
     }
     #region Create Production Order
+    /// <summary>
+    /// create production order: validate input, check BOM, create order and default operations, return order details
+    /// </summary>
+    /// <param name="dto"></param>
+    /// <returns></returns>
     [HttpPost("create-production-order")]
     public async Task<IActionResult> CreateOrder([FromBody] CreateProductionOrderDto dto)
     {
