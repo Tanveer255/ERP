@@ -46,7 +46,11 @@ public class PurchaseOrderController : ControllerBase
         _productStockService = productStockService;
         _productionOrderService = productionOrderService;
     }
-
+    /// <summary>
+    /// receive-purchase-order endpoint will:
+    /// </summary>
+    /// <param name="purchaseOrderId"></param>
+    /// <returns></returns>
     [HttpPost("receive-purchase-order")]
     public async Task<IActionResult> ReceivePurchaseOrder([FromQuery] Guid purchaseOrderId)
     {
