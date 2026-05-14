@@ -19,7 +19,10 @@ public class ProductController(IProductService productService,IUnitOfWork unitOf
     private readonly IUnitOfWork _unitOfWork = unitOfWork;
     private readonly IProductService _productService = productService;
     private readonly IProductRepository _productRepository = productRepository;
-
+    /// <summary>
+    /// get all products
+    /// </summary>
+    /// <returns></returns>
     // GET: api/product
     [HttpGet]
     public async Task<IActionResult> GetProducts()
