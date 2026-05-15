@@ -6,19 +6,23 @@ using ERP.Entity.Document;
 using ERP.Entity.Order;
 using ERP.Entity.Product;
 using ERP.Entity.Settings;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using System.Collections.Generic;
 using System.Text.Json;
 
 namespace ERP.Data;
 
-public class ManufacturingDbContext : DbContext
+public class ManufacturingDbContext(DbContextOptions<ManufacturingDbContext> options)
+    : IdentityDbContext<User, Role, Guid, UserClaim, UserRole, UserLogin, RoleClaim, UserToken>(options)
 {
-    public ManufacturingDbContext(DbContextOptions<ManufacturingDbContext> options)
-        : base(options)
-    {
-    }
-
+    public new DbSet<User> Users { get; set; }
+    public new DbSet<Role> Roles { get; set; }
+    public new DbSet<UserRole> UserRoles { get; set; }
+    public new DbSet<RoleClaim> RoleClaims { get; set; }
+    public new DbSet<UserClaim> UserClaims { get; set; }
+    public new DbSet<UserLogin> UserLogins { get; set; }
+    public new DbSet<UserToken> UserTokens { get; set; }
     public DbSet<ProductEntity> Products { get; set; }
     public DbSet<BillOfMaterial> BillOfMaterials { get; set; }
     public DbSet<BillOfMaterialItem> BillOfMaterialItems { get; set; }
@@ -43,7 +47,6 @@ public class ManufacturingDbContext : DbContext
     public DbSet<Tenant> Tenants { get; set; }
     public DbSet<Company> Companies { get; set; }
     public DbSet<Address>   Addresses { get; set; }
-    public DbSet<User> Users { get; set; }
     public DbSet<Setting> Settings { get; set; }
 
 
