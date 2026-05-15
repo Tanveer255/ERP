@@ -1,5 +1,7 @@
 ﻿using ERP.Data.DTO;
+using ERP.Data.DTO.Auth;
 using ERP.Data.Request;
+using ERP.Entity;
 using ERP.Entity.Auth;
 using ERP.Repository;
 using ERP.Repository.Auth;

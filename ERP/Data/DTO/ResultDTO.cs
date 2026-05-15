@@ -2,25 +2,26 @@
 
 public class ResultDTO<T>
 {
-    public bool IsSuccess { get; set; }
-    public string? Message { get; set; }
-    public T? Data { get; set; }
+    // Public getters and setters for MassTransit serialization
+    public bool Succeeded { get; set; }
+    public string Message { get; set; }
+    public T Data { get; set; }
 
-    public static ResultDTO<T> Success(T data)
+    private ResultDTO(bool succeeded, string message, T data)
     {
-        return new ResultDTO<T>
-        {
-            IsSuccess = true,
-            Data = data
-        };
+        Succeeded = succeeded;
+        Message = message;
+        Data = data;
+    }
+    // Parameterless constructor for MassTransit
+    public ResultDTO() { }
+    public static ResultDTO<T> Success(T data, string message = "")
+    {
+        return new ResultDTO<T>(true, message, data);
     }
 
-    public static ResultDTO<T> Failure(string message)
+    public static ResultDTO<T> Fail(string message, T data = default)
     {
-        return new ResultDTO<T>
-        {
-            IsSuccess = false,
-            Message = message
-        };
+        return new ResultDTO<T>(false, message, data);
     }
 }

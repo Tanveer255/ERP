@@ -1,4 +1,5 @@
 ﻿using ERP.Entity;
+using ERP.Entity.Auth;
 using ERP.Entity.BOM;
 using ERP.Entity.Contact;
 using ERP.Entity.Document;
@@ -38,6 +39,12 @@ public class ManufacturingDbContext : DbContext
     public DbSet<SalesOrderItem> SalesOrderItems { get; set; }
     public DbSet<MrpPlan> MrpPlans { get; set; }
     public DbSet<InventorySettings> InventorySettings { get; set; }
+    public DbSet<AppFile> AppFiles { get; set; }
+    public DbSet<Tenant> Tenants { get; set; }
+    public DbSet<Company> Companies { get; set; }
+
+
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
