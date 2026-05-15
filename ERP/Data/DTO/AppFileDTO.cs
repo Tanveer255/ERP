@@ -1,4 +1,5 @@
-﻿using System.IO.Compression;
+﻿using ERP.Entity;
+using System.IO.Compression;
 
 namespace ERP.Data.DTO;
 

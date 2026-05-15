@@ -1,8 +1,10 @@
 using ERP.Data;
+using ERP.Data.DTO.Auth;
 using ERP.Repository;
 using ERP.Repository.Contact;
 using ERP.Repository.Product;
 using ERP.Service;
+using ERP.Service.Auth;
 using ERP.Service.Common;
 using ERP.Service.Contact;
 using ERP.Service.Document;
@@ -15,6 +17,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<ManufacturingDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection("JwtSettings"));
 builder.Services.AddScoped(typeof(IRepository<>), typeof(Repository<>));
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped(typeof(ICrudService<>), typeof(CrudService<>));
@@ -33,7 +36,7 @@ builder.Services.AddScoped<ProductionOperationService>();
 builder.Services.AddTransient<IProductRepository,ProductRepository>();
 builder.Services.AddTransient<IContactService, ContactService>();
 builder.Services.AddTransient<IContactRepository, ContactRepository>();
-
+builder.Services.AddTransient<IJwtAuthenticationService, JwtAuthenticationService>();
 
 // Add services to the container.
 

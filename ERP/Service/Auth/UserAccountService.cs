@@ -1,6 +1,8 @@
 ﻿using ERP.Data.DTO;
 using ERP.Data.Request;
+using ERP.Entity.Auth;
 using ERP.Repository;
+using ERP.Repository.Auth;
 using ERP.Service.Common;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.Data;
