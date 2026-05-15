@@ -77,7 +77,13 @@ public interface IRepository<T>
     /// </summary>
     /// <returns></returns>
     IQueryable<T> GetAllReadOnly();
-
+    public Task Discard(T entities);
+    /// <summary>
+    /// Discard list parmanantly
+    /// </summary>
+    /// <param name="entities"></param>
+    /// <returns></returns>
+    public Task Discard(IEnumerable<T> entities);
 }
 
 /// <summary>
@@ -297,6 +303,52 @@ public class Repository<T> : IRepository<T> where T : class
             _logger.LogInformation("Deleting range of entities.");
             _unitOfWork.Context.Set<T>().RemoveRange(entities);
             await _unitOfWork.Context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, ex.Message, ex.InnerException, ex.InnerException != null ? ex.InnerException.Message : string.Empty);
+            throw new Exception(ex.Message, ex.InnerException);
+        }
+    }
+    /// <summary>
+    /// Discard single item parmanantly
+    /// </summary>
+    /// <param name="entity"></param>
+    /// <returns></returns>
+
+    public async Task Discard(T entity)
+    {
+        try
+        {
+            _logger.LogInformation("Deleting permanantly." + entity);
+
+            _unitOfWork.Context.Set<T>().Remove(entity);
+
+            await Task.FromResult(entity);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, ex.Message, ex.InnerException, ex.InnerException != null ? ex.InnerException.Message : string.Empty);
+            throw new Exception(ex.Message, ex.InnerException);
+        }
+    }
+    /// <summary>
+    /// Discard list parmanantly
+    /// </summary>
+    /// <param name="entities"></param>
+    /// <returns></returns>
+
+    public async Task Discard(IEnumerable<T> entities)
+    {
+        try
+        {
+            _logger.LogInformation("Deleting list permanantly." + entities);
+            foreach (var entity in entities)
+            {
+                _unitOfWork.Context.Set<T>().Remove(entity);
+            }
+
+            await Task.FromResult(entities);
         }
         catch (Exception ex)
         {

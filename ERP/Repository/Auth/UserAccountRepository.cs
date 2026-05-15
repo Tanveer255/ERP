@@ -1,6 +1,8 @@
 ﻿using ERP.Data.DTO.Auth;
 using ERP.Data.Request;
 using ERP.Entity.Auth;
+using ERP.Enum;
+using Microsoft.EntityFrameworkCore;
 using System.Security.AccessControl;
 
 namespace ERP.Repository.Auth;

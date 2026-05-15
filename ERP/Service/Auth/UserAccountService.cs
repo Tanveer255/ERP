@@ -1,8 +1,10 @@
-﻿using ERP.Data.DTO;
+﻿using DnsClient;
+using ERP.Data.DTO;
 using ERP.Data.DTO.Auth;
 using ERP.Data.Request;
 using ERP.Entity;
 using ERP.Entity.Auth;
+using ERP.Enum;
 using ERP.Repository;
 using ERP.Repository.Auth;
 using ERP.Service.Common;
@@ -69,7 +71,7 @@ public interface IUserAccountService : ICrudService<User>
     /// <returns>
     /// A task that represents the asynchronous operation. The task result contains a <see cref="ResultDTO{GetProfileResponse}"/> with the user's profile data if found.
     /// </returns>
-    Task<ResultDTO<Entity.DTO.Responces.GetProfileResponse>> GetProfileAsync(Guid userId);
+    Task<ResultDTO<GetProfileResponse>> GetProfileAsync(Guid userId);
 
     /// <summary>
     /// Registers a new user using the provided sign-up information.
@@ -115,7 +117,7 @@ public interface IUserAccountService : ICrudService<User>
     /// <returns>
     /// A task that represents the asynchronous operation. The task result contains a <see cref="ResultDTO{Boolean}"/> indicating whether the operation succeeded.
     /// </returns>
-    Task<ResultDTO<bool>> ResetPasswordAsync(ResetPasswordRequest response);
+    Task<ResultDTO<bool>> ResetPasswordAsync(ERP.Data.Request.ResetPasswordRequest response);
 
     /// <summary>
     /// // Resend email confirmation for user
@@ -177,7 +179,6 @@ public class UserAccountService(
     IAppFileService appFileService,
     ITenantService tenantService,
     ICompanyService companyService,
-    IPublishEndpoint publishEndpoint,
     ISettingRepository settingRepository,
     IRecaptchaService recaptchaService,
     IHttpContextAccessor httpContextAccessor,
@@ -198,7 +199,6 @@ public class UserAccountService(
     private readonly ITenantService _tenantService = tenantService;
     private readonly ICompanyService _companyService = companyService;
     private readonly IAddressTypeService _addressTypeService = addressTypeService;
-    private readonly IPublishEndpoint _publishEndpoint = publishEndpoint;
     private readonly UserManager<User> _userManager = userManager;
     private readonly ISettingRepository _settingRepository = settingRepository;
     private readonly IRecaptchaService _recaptchaService = recaptchaService;
@@ -461,7 +461,6 @@ public class UserAccountService(
                 Status = nameof(UserStatus.Active),
                 UserType = nameof(AccessRole.Registrar),
                 IsTermsAgreed = request.IsTermsAgreed,
-
             };
 
             user.PasswordHash = _passwordHasher.HashPassword(user, request.Password);
@@ -491,13 +490,6 @@ public class UserAccountService(
                 await _emailService.SendSignUpEmail(signUpEmailDTO);
                 await _emailService.SupportSignupAlertTemplate(request.Email);
             }
-
-            // Step 8: Publish domain events
-            await _publishEndpoint.Publish(new ChecksCreatedEvent
-            {
-                SettingId = setting.Id,
-                TenantId = user.TenantId,
-            });
             return ResultDTO<bool>.Success(true, "Verification email sent. Please check your inbox.");
         }
         catch (Exception exception)
@@ -549,16 +541,16 @@ public class UserAccountService(
     /// </summary>
     /// <param name="userId"></param>
     /// <returns></returns>
-    public async Task<ResultDTO<Entity.DTO.Responces.GetProfileResponse>> GetProfileAsync(Guid userId)
+    public async Task<ResultDTO<GetProfileResponse>> GetProfileAsync(Guid userId)
     {
         try
         {
             var existUser = await _userRepository.GetUserByIdAsync(userId);
             if (existUser == null)
-                return ResultDTO<Entity.DTO.Responces.GetProfileResponse>.Fail("User not found.");
+                return ResultDTO<GetProfileResponse>.Fail("User not found.");
 
             var files = await _appFileService.GetByUserIdAsync(userId);
-            var response = new Entity.DTO.Responces.GetProfileResponse
+            var response = new GetProfileResponse
             {
                 FirstName = existUser.FirstName,
                 LastName = existUser.LastName,
@@ -567,13 +559,13 @@ public class UserAccountService(
                 CountryCode = existUser.CountryCode,
                 FormFiles = files.Data
             };
-            return ResultDTO<Entity.DTO.Responces.GetProfileResponse>.Success(response, "Profile updated successfully.");
+            return ResultDTO<GetProfileResponse>.Success(response, "Profile updated successfully.");
         }
         catch (Exception exception)
         {
             _logger.LogError($"Error in {nameof(UserAccountService)}.{nameof(GetProfileAsync)}");
             _logger.LogError(exception, exception.Message, exception.InnerException, exception.InnerException?.Message ?? string.Empty);
-            return ResultDTO<Entity.DTO.Responces.GetProfileResponse>.Fail("Something went wrong. Please try again later.");
+            return ResultDTO<GetProfileResponse>.Fail("Something went wrong. Please try again later.");
         }
     }
 
@@ -690,7 +682,7 @@ public class UserAccountService(
     /// </summary>
     /// <param name="request"></param>
     /// <returns></returns>
-    public async Task<ResultDTO<bool>> ResetPasswordAsync(ResetPasswordRequest request)
+    public async Task<ResultDTO<bool>> ResetPasswordAsync(ERP.Data.Request.ResetPasswordRequest request)
     {
         try
         {
