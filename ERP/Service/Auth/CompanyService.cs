@@ -1,6 +1,9 @@
 ﻿using ERP.Data.DTO;
+using ERP.Data.DTO.Auth;
 using ERP.Data.Request;
+using ERP.Entity.Auth;
 using ERP.Enum;
+using ERP.Infrastructure;
 using ERP.Repository;
 using ERP.Repository.Auth;
 using ERP.Service.Common;
@@ -228,7 +231,7 @@ public class CompanyService(
             TurnoverCcy = nameof(Currency.USD),
             IsNewSignUp = true,
             IsPartner = true,
-            PartnerType = nameof(PartnerType.FedEx)
+            //PartnerType = nameof(PartnerType.FedEx)
         };
 
         await _companyRepository.Add(company);

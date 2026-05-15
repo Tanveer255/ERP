@@ -1,4 +1,7 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using ERP.Data.DTO.Auth;
+using ERP.Entity.Auth;
+using ERP.Enum;
+using Microsoft.EntityFrameworkCore;
 using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace ERP.Repository.Auth;

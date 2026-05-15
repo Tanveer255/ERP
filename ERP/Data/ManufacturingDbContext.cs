@@ -42,6 +42,8 @@ public class ManufacturingDbContext : DbContext
     public DbSet<AppFile> AppFiles { get; set; }
     public DbSet<Tenant> Tenants { get; set; }
     public DbSet<Company> Companies { get; set; }
+    public DbSet<Address>   Addresses { get; set; }
+    public DbSet<User> Users { get; set; }
 
 
 
