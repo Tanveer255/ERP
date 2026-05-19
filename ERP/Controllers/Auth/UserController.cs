@@ -24,7 +24,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     public async Task<IActionResult> Login([FromBody] LogInRequest request)
     {
         var result = await _userService.LoginAsync(request);
-        if (result.IsSuccess)
+        if (result.Succeeded)
         {
             return Ok(result);
         }
@@ -41,7 +41,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     public async Task<IActionResult> Logout([FromBody] LogOutRequest request)
     {
         var result = await _userService.LogoutAsync(request);
-        if (result.IsSuccess)
+        if (result.Succeeded)
         {
             return Ok(result);
         }
@@ -58,7 +58,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     public async Task<IActionResult> Signup([FromBody] SignUpRequest request)
     {
         var result = await _userService.SignupAsync(request);
-        if (result.IsSuccess)
+        if (result.Succeeded)
         {
             return Ok(result);
         }
@@ -77,7 +77,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     public async Task<IActionResult> ConfirmEmail([FromBody] ValidateTokenRequest request)
     {
         var result = await _userService.ConfirmEmailAsync(request);
-        if (result.IsSuccess)
+        if (result.Succeeded)
         {
             return Ok(result);
         }
@@ -96,7 +96,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest model)
     {
         var result = await _userService.ChangePasswordAsync(model, User.GetUserId());
-        if (result.IsSuccess)
+        if (result.Succeeded)
         {
             return Ok(result);
         }
@@ -115,7 +115,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     public async Task<IActionResult> ForgotPasswordEmail([FromBody] ForgotPasswordEmailRequest request)
     {
         var result = await _userService.ForgotPasswordEmail(request);
-        if (result.IsSuccess)
+        if (result.Succeeded)
         {
             return Ok(result);
         }
@@ -152,7 +152,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     public async Task<IActionResult> GetProfile()
     {
         var result = await _userService.GetProfileAsync(User.GetUserId());
-        if (result.IsSuccess)
+        if (result.Succeeded)
         {
             return Ok(result);
         }
@@ -171,7 +171,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     public async Task<IActionResult> UpdateProfile([FromForm] UpdateUserRequest request)
     {
         var result = await _userService.UpdateProfileAsync(request, User.GetUserId());
-        if (result.IsSuccess)
+        if (result.Succeeded)
         {
             return Ok(result);
         }
@@ -190,7 +190,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     public async Task<IActionResult> DeleteUser(Guid id)
     {
         var result = await _userService.DeleteUserAsync(id);
-        if (result.IsSuccess)
+        if (result.Succeeded)
         {
             return Ok(result);
         }
@@ -209,7 +209,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     public async Task<IActionResult> ResendEmail(ResendEmailConfirmation request)
     {
         var result = await _userService.ResendEmailAsync(request);
-        if (result.IsSuccess)
+        if (result.Succeeded)
         {
             return Ok(result);
         }
@@ -224,7 +224,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     public async Task<IActionResult> GetSupportRequest()
     {
         var result = await _userService.GetSupportRequest(User.GetTenantId());
-        if (result.IsSuccess)
+        if (result.Succeeded)
         {
             return Ok(result);
         }
@@ -240,7 +240,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     public async Task<IActionResult> ToggleSupportRequest()
     {
         var result = await _userService.ToggleSupportRequest(User.GetTenantId());
-        if (result.IsSuccess)
+        if (result.Succeeded)
         {
             return Ok(result);
         }
