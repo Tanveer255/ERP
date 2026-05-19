@@ -682,7 +682,7 @@ public class UserAccountService(
     /// </summary>
     /// <param name="request"></param>
     /// <returns></returns>
-    public async Task<ResultDTO<bool>> ResetPasswordAsync(ERP.Data.Request.ResetPasswordRequest request)
+    public async Task<ResultDTO<bool>> ResetPasswordAsync(ResetPasswordRequest request)
     {
         try
         {
