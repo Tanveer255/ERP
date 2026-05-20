@@ -185,7 +185,7 @@ public class UserAccountService(
     IPasswordHasher<User> passwordHasher,
     IAddressTypeService addressTypeService,
     ISettingsService settingsService,
-    IPasswordValidator<User> passwordValidator,
+    IPasswordValidator passwordValidator,
     IMemoryCache cache
     ) : CrudService<User>(userRepository, unitOfWork), IUserAccountService
 {
@@ -205,7 +205,7 @@ public class UserAccountService(
     private readonly IHttpContextAccessor _httpContextAccessor = httpContextAccessor;
     private readonly IPasswordHasher<User> _passwordHasher = passwordHasher;
     private readonly ISettingsService _settingsService = settingsService;
-    private readonly IPasswordValidator<User> _passwordValidator = passwordValidator;
+    private readonly IPasswordValidator _passwordValidator = passwordValidator;
     private readonly IMemoryCache _cache = cache;
 
     /// <summary>
@@ -682,7 +682,7 @@ public class UserAccountService(
     /// </summary>
     /// <param name="request"></param>
     /// <returns></returns>
-    public async Task<ResultDTO<bool>> ResetPasswordAsync(ResetPasswordRequest request)
+    public async Task<ResultDTO<bool>> ResetPasswordAsync(ERP.Data.Request.ResetPasswordRequest request)
     {
         try
         {

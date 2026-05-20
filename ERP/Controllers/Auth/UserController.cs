@@ -131,10 +131,10 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     /// Returns 200 OK if the password was reset successfully; otherwise, returns 400 Bad Request with an error message.
     /// </returns>
     [HttpPost(nameof(ResetPassword))]
-    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    public async Task<IActionResult> ResetPassword([FromBody] ERP.Data.Request.ResetPasswordRequest request)
     {
         var result = await _userService.ResetPasswordAsync(request);
-        if (result.IsSuccess)
+        if (result.Succeeded)
         {
             return Ok(result);
         }
