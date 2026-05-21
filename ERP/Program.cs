@@ -38,6 +38,13 @@ builder.Services.AddTransient<IProductRepository,ProductRepository>();
 builder.Services.AddTransient<IContactService, ContactService>();
 builder.Services.AddTransient<IContactRepository, ContactRepository>();
 builder.Services.AddTransient<IJwtAuthenticationService, JwtAuthenticationService>();
+builder.Services.AddTransient<IAddressTypeService, AddressTypeService>();
+builder.Services.AddTransient<IAppFileService, AppFileService>();
+builder.Services.AddTransient<ICompanyService, CompanyService>();
+builder.Services.AddTransient<IPasswordValidator, PasswordValidator>();
+builder.Services.AddTransient<IRecaptchaService, RecaptchaService>();
+builder.Services.AddTransient<ITenantService, TenantService>();
+builder.Services.AddTransient<IUserAccountService, UserAccountService>();
 
 // Add services to the container.
 
