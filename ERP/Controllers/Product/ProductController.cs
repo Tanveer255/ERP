@@ -2,6 +2,7 @@
 using ERP.Data.DTO.Product;
 using ERP.Entity;
 using ERP.Entity.Product;
+using ERP.Helpers;
 using ERP.Repository;
 using ERP.Repository.Product;
 using ERP.Service;
@@ -57,7 +58,7 @@ public class ProductController(IProductService productService,IUnitOfWork unitOf
     {
         var product = new ProductEntity
         {
-            Code = Helper.GenerateCode(),
+            Code = SaleOrderHelper.GenerateCode(),
             Name = dto.Name,
             Unit = dto.Unit,
             UnitCost = dto.UnitCost,
@@ -95,7 +96,7 @@ public class ProductController(IProductService productService,IUnitOfWork unitOf
             CreatedAt = DateTime.UtcNow
         };
 
-        price.FinalPrice = Helper.GetFinalPrice(price);
+        price.FinalPrice = SaleOrderHelper.GetFinalPrice(price);
 
         _unitOfWork.Context.ProductStocks.Add(stock);
         _unitOfWork.Context.Prices.Add(price);

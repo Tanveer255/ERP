@@ -4,6 +4,7 @@ using ERP.Entity;
 using ERP.Entity.Document;
 using ERP.Entity.Product;
 using ERP.Enum;
+using ERP.Helpers;
 using ERP.Service;
 using ERP.Service.Document;
 using ERP.Service.Product;
@@ -159,7 +160,7 @@ public class ProductionController : ControllerBase
             {
                 var requiredQty = item.Quantity * order.PlannedQuantity;
 
-                var success = await Helper.ExecuteWithRetryAsync(async () =>
+                var success = await SaleOrderHelper.ExecuteWithRetryAsync(async () =>
                 {
                     if (!await _purchaseOrderService.AdjustStock(
                             order.Id,
@@ -210,7 +211,7 @@ public class ProductionController : ControllerBase
             .OrderBy(x => x.SequenceNumber)
             .FirstOrDefaultAsync();
 
-        var success = await Helper.ExecuteWithRetryAsync(async () =>
+        var success = await SaleOrderHelper.ExecuteWithRetryAsync(async () =>
         {
             order.Status = nameof(ProductionStatus.InProgress);
             order.ActualStartDate = DateTime.UtcNow;
