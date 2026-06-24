@@ -53,8 +53,29 @@ public class PurchaseOrderController : ControllerBase
     public async Task<IActionResult> GetPurchaseOrders()
     {
         var orders = await _context.PurchaseOrders
-            .Include(o => o.Items)
             .OrderByDescending(o => o.OrderDate)
+            .Select(o => new
+            {
+                o.Id,
+                o.OrderNumber,
+                o.SupplierId,
+                o.OrderDate,
+                o.ExpectedDate,
+                Status = o.Status.ToString(),
+                o.SubTotal,
+                o.TaxAmount,
+                o.TotalAmount,
+                o.Notes,
+                Items = o.Items.Select(i => new
+                {
+                    i.Id,
+                    i.ProductId,
+                    i.QuantityRequested,
+                    i.QuantityReceived,
+                    i.UnitPrice,
+                    i.TotalPrice
+                }).ToList()
+            })
             .ToListAsync();
         return Ok(orders);
     }

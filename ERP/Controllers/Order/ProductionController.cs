@@ -46,6 +46,21 @@ public class ProductionController : ControllerBase
     {
         var orders = await _context.ProductionOrders
             .OrderByDescending(o => o.PlannedStartDate)
+            .Select(o => new
+            {
+                o.Id,
+                o.OrderNumber,
+                o.ProductId,
+                o.BillOfMaterialId,
+                o.PlannedQuantity,
+                o.ProducedQuantity,
+                o.Status,
+                o.PlannedStartDate,
+                o.PlannedFinishDate,
+                o.ActualStartDate,
+                o.ActualFinishDate,
+                o.SalesOrderItemId
+            })
             .ToListAsync();
         return Ok(orders);
     }

@@ -46,8 +46,31 @@ public class SalesController : ControllerBase
     public async Task<IActionResult> GetSalesOrders()
     {
         var orders = await _context.SalesOrders
-            .Include(o => o.Items)
             .OrderByDescending(o => o.OrderDate)
+            .Select(o => new
+            {
+                o.Id,
+                o.OrderNumber,
+                o.OrderDate,
+                Status = o.Status.ToString(),
+                ReservationStatus = o.ReservationStatus.ToString(),
+                o.TotalAmount,
+                o.CustomerName,
+                o.CustomerEmail,
+                o.TotalQuantity,
+                o.TotalFulfilledQuantity,
+                Items = o.Items.Select(i => new
+                {
+                    i.Id,
+                    i.ProductId,
+                    i.QuantityRequested,
+                    i.QuantityReserved,
+                    i.QuantityFulfilled,
+                    i.UnitPrice,
+                    i.TotalPrice,
+                    i.Status
+                }).ToList()
+            })
             .ToListAsync();
         return Ok(orders);
     }
