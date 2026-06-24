@@ -47,6 +47,19 @@ public class PurchaseOrderController : ControllerBase
         _productionOrderService = productionOrderService;
     }
     /// <summary>
+    /// List all purchase orders
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> GetPurchaseOrders()
+    {
+        var orders = await _context.PurchaseOrders
+            .Include(o => o.Items)
+            .OrderByDescending(o => o.OrderDate)
+            .ToListAsync();
+        return Ok(orders);
+    }
+
+    /// <summary>
     /// receive-purchase-order endpoint will:
     /// </summary>
     /// <param name="purchaseOrderId"></param>

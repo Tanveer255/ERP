@@ -17,6 +17,18 @@ namespace ERP.Controllers.Parties
             _context = context;
         }
         /// <summary>
+        /// List all suppliers/contacts
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetSuppliers()
+        {
+            var suppliers = await _context.Contact
+                .OrderByDescending(c => c.CreatedAt)
+                .ToListAsync();
+            return Ok(suppliers);
+        }
+
+        /// <summary>
         /// create supplier with products and pricing information. This will create a new contact of type supplier and link it to the specified products with their prices and lead times.
         /// </summary>
         /// <param name="dto"></param>

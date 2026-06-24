@@ -40,6 +40,16 @@ public class ProductionController : ControllerBase
         _mrpService = mrpService;
         _productStockService = productStockService;
     }
+
+    [HttpGet]
+    public async Task<IActionResult> GetProductionOrders()
+    {
+        var orders = await _context.ProductionOrders
+            .OrderByDescending(o => o.PlannedStartDate)
+            .ToListAsync();
+        return Ok(orders);
+    }
+
     #region Create Production Order
     /// <summary>
     /// create production order: validate input, check BOM, create order and default operations, return order details

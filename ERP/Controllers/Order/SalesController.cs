@@ -40,6 +40,19 @@ public class SalesController : ControllerBase
     }
 
     // ================================
+    // LIST SALES ORDERS
+    // ================================
+    [HttpGet]
+    public async Task<IActionResult> GetSalesOrders()
+    {
+        var orders = await _context.SalesOrders
+            .Include(o => o.Items)
+            .OrderByDescending(o => o.OrderDate)
+            .ToListAsync();
+        return Ok(orders);
+    }
+
+    // ================================
     // CREATE SALES ORDER
     // ================================
     [HttpPost("create-sales-order")]
