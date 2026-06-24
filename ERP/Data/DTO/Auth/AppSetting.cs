@@ -36,6 +36,9 @@ public class AppSetting
     public static string MaxMindUserId { get; set; }
     public static string MaxMindLicenseKey { get; set; }
     public static string UIUrl { get; set; }
+    public string SupportEmail { get; set; }
+    public string Support { get => SupportEmail; set => SupportEmail = value; }
+    public bool EmailValidationEnabled { get; set; }
     public IConfigurationSection Saml2Section { get; set; }
     public static string Saml2IdPMetadata { get; set; }
     public static string Saml2Issuer { get; set; }
@@ -81,12 +84,14 @@ public class SendGridSettings
 {
     public string EmailApiKey { get; set; }
     public string ValidationApiKey { get; set; }
+    public string ValidationUrl { get; set; } = "https://api.sendgrid.com/v3/validations/email";
     public string ToEmail { get; set; }
     public string CCEmail { get; set; }
     public string AttachmentDisposition { get; set; }
     public string TestingCCEmail { get; set; }
     public string TestingToEmail { get; set; }
     public string FromEmail { get; set; }
+    public string ToSupportEmail { get => ToEmail; set => ToEmail = value; }
     public string AttachmentFileName { get; set; }
     public string AttachmentType { get; set; }
 }
@@ -101,6 +106,9 @@ public class ApplicationSettings
     public string SupportEmail { get; set; }
     public string ServicesInterfaceUrl { get; set; }
     public string UIUrl { get; set; }
+    public string UiUrl { get => UIUrl; set => UIUrl = value; }
+    public string Support { get => SupportEmail; set => SupportEmail = value; }
+    public string StaffUiUrl { get; set; }
     public string DevUrl { get; set; }
     public string Environment { get; set; }
     public string SandBoxEnvironment { get; set; }

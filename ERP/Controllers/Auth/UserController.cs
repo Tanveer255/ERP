@@ -2,8 +2,6 @@
 using ERP.Infrastructure;
 using ERP.Service.Auth;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ERP.Controllers.Auth;
@@ -20,7 +18,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     /// Returns 200 OK with user details and token if authentication is successful; 
     /// otherwise, returns 400 Bad Request with an error message.
     /// </returns>
-    [HttpPost(nameof(Login))]
+    [AllowAnonymous, HttpPost(nameof(Login))]
     public async Task<IActionResult> Login([FromBody] LogInRequest request)
     {
         var result = await _userService.LoginAsync(request);
@@ -37,7 +35,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     /// </summary>
     /// <param name="request"></param>
     /// <returns></returns>
-    [HttpPost(nameof(Logout))]
+    [AllowAnonymous, HttpPost(nameof(Logout))]
     public async Task<IActionResult> Logout([FromBody] LogOutRequest request)
     {
         var result = await _userService.LogoutAsync(request);
@@ -54,7 +52,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     /// </summary>
     /// <param name="request"></param>
     /// <returns></returns>
-    [HttpPost(nameof(Signup))]
+    [AllowAnonymous, HttpPost(nameof(Signup))]
     public async Task<IActionResult> Signup([FromBody] SignUpRequest request)
     {
         var result = await _userService.SignupAsync(request);
@@ -73,7 +71,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     /// <returns>
     /// Returns 200 OK if the email was successfully confirmed; otherwise, returns 400 Bad Request with an error message.
     /// </returns>
-    [HttpPost(nameof(ConfirmEmail))]
+    [AllowAnonymous, HttpPost(nameof(ConfirmEmail))]
     public async Task<IActionResult> ConfirmEmail([FromBody] ValidateTokenRequest request)
     {
         var result = await _userService.ConfirmEmailAsync(request);
@@ -111,7 +109,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     /// <returns>
     /// Returns 200 OK if the reset email was sent successfully; otherwise, returns 400 Bad Request with an error message.
     /// </returns>
-    [HttpPost(nameof(ForgotPasswordEmail))]
+    [AllowAnonymous, HttpPost(nameof(ForgotPasswordEmail))]
     public async Task<IActionResult> ForgotPasswordEmail([FromBody] ForgotPasswordEmailRequest request)
     {
         var result = await _userService.ForgotPasswordEmail(request);
@@ -130,7 +128,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     /// <returns>
     /// Returns 200 OK if the password was reset successfully; otherwise, returns 400 Bad Request with an error message.
     /// </returns>
-    [HttpPost(nameof(ResetPassword))]
+    [AllowAnonymous, HttpPost(nameof(ResetPassword))]
     public async Task<IActionResult> ResetPassword([FromBody] ERP.Data.Request.ResetPasswordRequest request)
     {
         var result = await _userService.ResetPasswordAsync(request);
@@ -186,7 +184,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     /// <returns>
     /// Returns 200 OK if the user was deleted successfully; otherwise, returns 400 Bad Request with an error message.
     /// </returns>
-    [HttpDelete(nameof(DeleteUser))]
+    [Authorize, HttpDelete(nameof(DeleteUser))]
     public async Task<IActionResult> DeleteUser(Guid id)
     {
         var result = await _userService.DeleteUserAsync(id);
@@ -205,7 +203,7 @@ public class UsersController(IUserAccountService userService) : ApiBaseControlle
     /// <returns>
     /// Returns 200 OK if the confirmation email was sent successfully; otherwise, returns 400 Bad Request with an error message.
     /// </returns>
-    [HttpPost(nameof(ResendEmail))]
+    [AllowAnonymous, HttpPost(nameof(ResendEmail))]
     public async Task<IActionResult> ResendEmail(ResendEmailConfirmation request)
     {
         var result = await _userService.ResendEmailAsync(request);

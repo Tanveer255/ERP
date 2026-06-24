@@ -24,4 +24,8 @@ public class ResultDTO<T>
     {
         return new ResultDTO<T>(false, message, data);
     }
+
+    public bool IsSuccess => Succeeded;
+
+    public static ResultDTO<T> Failure(string message, T data = default) => Fail(message, data);
 }

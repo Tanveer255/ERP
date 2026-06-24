@@ -1,0 +1,53 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: erp-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "YourStrong!Passw0rd"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqldata:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourStrong!Passw0rd" -C -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  api:
+    build:
+      context: .
+      dockerfile: ERP/Dockerfile
+    container_name: erp-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: "Server=sqlserver;Database=ERPDb;User Id=sa;Password=YourStrong!Passw0rd;TrustServerCertificate=True;MultipleActiveResultSets=true"
+      FrontendUrl: "http://localhost:61104"
+      JwtSettings__SecretKey: "DevOnlySecretKey_ChangeInProduction_Min32Chars!"
+      JwtSettings__Issuer: "ERP"
+      JwtSettings__Audience: "ERP-Client"
+      JwtSettings__ExpiryMinutes: "60"
+      JwtSettings__RefreshTokenExpiryTime: "24"
+    ports:
+      - "5254:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./erp-app
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:5254
+    container_name: erp-frontend
+    ports:
+      - "61104:80"
+    depends_on:
+      - api
+
+volumes:
+  sqldata:

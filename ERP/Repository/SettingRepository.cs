@@ -1,4 +1,5 @@
 ﻿using ERP.Entity;
+using Microsoft.EntityFrameworkCore;
 
 namespace ERP.Repository;
 
@@ -28,7 +29,8 @@ public class SettingRepository(
 
     public async Task<bool> IsSupportEnabled(string tenantId)
     {
-        return await GetSingle(x => x.TenantId == tenantId).Select(x => x.IsSupportReq);
+        var setting = await GetSingle(x => x.TenantId == tenantId);
+        return setting?.IsSupportReq ?? false;
     }
 }
 

@@ -1,6 +1,10 @@
 ﻿using ERP.Data.DTO.Auth;
 using ERP.Data.Request;
+using ERP.Helpers;
 using Microsoft.Extensions.Options;
+using SendGrid;
+using SendGrid.Helpers.Mail;
+using System.Net.Http.Headers;
 using System.Net.Mail;
 using System.Text.Json;
 
@@ -18,14 +22,14 @@ public interface IEmailService
     /// <param name="subject">Paramter as subject of email.</param>
     /// <param name="htmlContent">Paramter to send the email.</param>
     /// <returns>Response Object after send.</returns>
-    public Task<SendGrid.Response> SendEmail(string email, string subject, string htmlContent);
+    public Task<global::SendGrid.Response> SendEmail(string email, string subject, string htmlContent);
 
     /// <summary>
     /// Method declration of IEmailService to send signup email.
     /// </summary>
     /// <param name="signUpEmailDTO"></param>
     /// <returns>Returns SendGrid Response</returns>
-    Task<SendGrid.Response> SendSignUpEmail(SignUpEmailDTO signUpEmailDTO);
+    Task<global::SendGrid.Response> SendSignUpEmail(SignUpEmailDTO signUpEmailDTO);
 
     /// <summary>
     /// Method declration of IEmailService to send email.
@@ -36,7 +40,7 @@ public interface IEmailService
     /// <param name="replyto"></param>
     /// <param name="htmlContent"></param>
     /// <returns>Returns SendGrid Response</returns>
-    public Task<SendGrid.Response> SendEmail(List<string> email, List<string> cc, string subject, string replyto, string htmlContent);
+    public Task<global::SendGrid.Response> SendEmail(List<string> email, List<string> cc, string subject, string replyto, string htmlContent);
 
     /// <summary>
     /// Method declration of IEmailService to send the attchment email.
@@ -46,7 +50,7 @@ public interface IEmailService
     /// <param name="htmlContent">Parameter to send the attachment email.</param>
     /// <param name="attachmentFile">Paramter to send the attchment email.</param>
     /// <returns>Reposne object after send.</returns>
-    public Task<SendGrid.Response> SendAttachmentEmail(string email, string subject, string htmlContent, List<byte[]> attachmentFile);
+    public Task<global::SendGrid.Response> SendAttachmentEmail(string email, string subject, string htmlContent, List<byte[]> attachmentFile);
 
     /// <summary>
     /// Method declration of IEmailService to validate the email.
@@ -62,7 +66,7 @@ public interface IEmailService
     /// <param name="token"></param>
     /// <param name="firstName"></param>
     /// <returns>Returns SendGrid Response</returns>
-    Task<SendGrid.Response> SendForgotPasswordEmail(string email, string token, string firstName);
+    Task<global::SendGrid.Response> SendForgotPasswordEmail(string email, string token, string firstName);
 
     /// <summary>
     /// Method declration of IEmailService to send forgot password email to staff.
@@ -71,28 +75,28 @@ public interface IEmailService
     /// <param name="token"></param>
     /// <param name="firstName"></param>
     /// <returns>Returns SendGrid Response</returns>
-    Task<SendGrid.Response> SendStaffForgotPasswordEmail(string email, string token, string firstName);
+    Task<global::SendGrid.Response> SendStaffForgotPasswordEmail(string email, string token, string firstName);
 
     /// <summary>
     ///  Method of Email Service to notify support is requested.
     /// </summary>
     /// <param name="userDetails"></param>
     /// <returns></returns>
-    Task<SendGrid.Response> NotifySupportRequested(UserDetailsForEmailDTO userDetails);
+    Task<global::SendGrid.Response> NotifySupportRequested(UserDetailsForEmailDTO userDetails);
 
     /// <summary>
     ///  Method of Email Service to notify staff user logged in.
     /// </summary>
     /// <param name="userDetails"></param>
     /// <returns></returns>
-    Task<SendGrid.Response> StaffUserLoginNotification(string email, string ipAddress);
+    Task<global::SendGrid.Response> StaffUserLoginNotification(string email, string ipAddress);
 
     /// <summary>
     ///  Method of Email Service to notify when staff user launched an account
     /// </summary>
     /// <param name="userDetails"></param>
     /// <returns></returns>
-    Task<SendGrid.Response> StaffUserLaunchedNotification(string email, string ipAddress, string tenantId);
+    Task<global::SendGrid.Response> StaffUserLaunchedNotification(string email, string ipAddress, string tenantId);
     /// <summary>
     ///   Get Support Signup Alert Template  
     /// </summary>
@@ -127,7 +131,7 @@ public class EmailService(
     /// <param name="subject">Paramter to get the subject of email.</param>
     /// <param name="htmlContent">Paramter of to send the email.</param>
     /// <returns>Response Object after send.</returns>
-    public Task<SendGrid.Response> SendEmail(string email, string subject, string htmlContent)
+    public Task<global::SendGrid.Response> SendEmail(string email, string subject, string htmlContent)
     {
         try
         {
@@ -168,7 +172,7 @@ public class EmailService(
     /// </summary>
     /// <param name="signUpEmailDTO"></param>
     /// <returns></returns>
-    public async Task<SendGrid.Response> SendSignUpEmail(SignUpEmailDTO signUpEmailDTO)
+    public async Task<global::SendGrid.Response> SendSignUpEmail(SignUpEmailDTO signUpEmailDTO)
     {
         try
         {
@@ -346,7 +350,7 @@ public class EmailService(
     /// <param name="email"></param>
     /// <param name="token"></param>
     /// <returns></returns>
-    public async Task<SendGrid.Response> SendForgotPasswordEmail(string email, string token, string firstName)
+    public async Task<global::SendGrid.Response> SendForgotPasswordEmail(string email, string token, string firstName)
     {
         try
         {
@@ -531,7 +535,7 @@ public class EmailService(
     /// <param name="email"></param>
     /// <param name="token"></param>
     /// <returns></returns>
-    public async Task<SendGrid.Response> SendStaffForgotPasswordEmail(string email, string token, string firstName)
+    public async Task<global::SendGrid.Response> SendStaffForgotPasswordEmail(string email, string token, string firstName)
     {
         try
         {
@@ -715,7 +719,7 @@ public class EmailService(
     /// <param name="htmlContent"></param>
     /// <returns></returns>
     /// <exception cref="ApplicationException"></exception>
-    public async Task<SendGrid.Response> SendEmail(List<string> email, List<string> cc, string subject, string replyto, string htmlContent)
+    public async Task<global::SendGrid.Response> SendEmail(List<string> email, List<string> cc, string subject, string replyto, string htmlContent)
     {
         try
         {
@@ -767,7 +771,7 @@ public class EmailService(
     /// <param name="htmlContent">Paramter of to send the email.</param>
     /// <param name="attachmentFile">Paramter to set the file for attach.</param>
     /// <returns>Response Object after send.</returns>
-    public Task<SendGrid.Response> SendAttachmentEmail(string email, string subject, string htmlContent, List<byte[]> attachmentFile)
+    public Task<global::SendGrid.Response> SendAttachmentEmail(string email, string subject, string htmlContent, List<byte[]> attachmentFile)
     {
         try
         {
@@ -811,9 +815,9 @@ public class EmailService(
             string validationUrl = _sendGridSettings.ValidationUrl;
             if (emailValidationEnabled)
             {
-                Entity.SendGrid.Validation.Request request = new Entity.SendGrid.Validation.Request();
-                Entity.SendGrid.Validation.Response response = new Entity.SendGrid.Validation.Response();
-                request = new Entity.SendGrid.Validation.Request()
+                EmailValidation.Request request = new EmailValidation.Request();
+                EmailValidation.Response response = new EmailValidation.Response();
+                request = new EmailValidation.Request()
                 {
                     email = email,
                     source = "signup",
@@ -829,7 +833,7 @@ public class EmailService(
                         var jsonResponse = await httpResponse.Content.ReadAsStringAsync();
                         if (httpResponse.IsSuccessStatusCode)
                         {
-                            response = JsonSerializer.Deserialize<Entity.SendGrid.Validation.Response>(jsonResponse);
+                            response = JsonSerializer.Deserialize<EmailValidation.Response>(jsonResponse);
                         }
                     }
                 }
@@ -906,7 +910,7 @@ public class EmailService(
     /// </summary>
     /// <param name="userDetails"></param>
     /// <returns></returns>
-    public async Task<SendGrid.Response> NotifySupportRequested(UserDetailsForEmailDTO userDetails)
+    public async Task<global::SendGrid.Response> NotifySupportRequested(UserDetailsForEmailDTO userDetails)
     {
         try
         {
@@ -971,7 +975,7 @@ Anbeond Support Team
     /// </summary>
     /// <param name="userDetails"></param>
     /// <returns></returns>
-    public async Task<SendGrid.Response> StaffUserLoginNotification(string email, string ipAddress)
+    public async Task<global::SendGrid.Response> StaffUserLoginNotification(string email, string ipAddress)
     {
         try
         {
@@ -1015,7 +1019,7 @@ Anbeond Support Team
     /// </summary>
     /// <param name="userDetails"></param>
     /// <returns></returns>
-    public async Task<SendGrid.Response> StaffUserLaunchedNotification(string email, string ipAddress, string tenantId)
+    public async Task<global::SendGrid.Response> StaffUserLaunchedNotification(string email, string ipAddress, string tenantId)
     {
         try
         {

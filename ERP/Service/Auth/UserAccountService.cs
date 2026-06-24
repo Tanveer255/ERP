@@ -8,12 +8,12 @@ using ERP.Enum;
 using ERP.Repository;
 using ERP.Repository.Auth;
 using ERP.Service.Common;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using System.Net;
-using System.Security.AccessControl;
 
 namespace ERP.Service.Auth;
 
@@ -186,7 +186,8 @@ public class UserAccountService(
     IAddressTypeService addressTypeService,
     ISettingsService settingsService,
     IPasswordValidator passwordValidator,
-    IMemoryCache cache
+    IMemoryCache cache,
+    IWebHostEnvironment environment
     ) : CrudService<User>(userRepository, unitOfWork), IUserAccountService
 {
     private readonly IUserAccountRepository _userRepository = userRepository;
@@ -207,6 +208,7 @@ public class UserAccountService(
     private readonly ISettingsService _settingsService = settingsService;
     private readonly IPasswordValidator _passwordValidator = passwordValidator;
     private readonly IMemoryCache _cache = cache;
+    private readonly IWebHostEnvironment _environment = environment;
 
     /// <summary>
     /// Login user with varify user Email, password and also generate token with user claims
@@ -264,13 +266,14 @@ public class UserAccountService(
     public async Task<LoginResponce> GetLoginResponseData(User user)
     {
         var setting = await _settingRepository.GetSettingByTenantId(user.TenantId);
+        var roles = await _userManager.GetRolesAsync(user);
         var generateToken = new GenerateTokenRequest
         {
             Email = user.Email,
             TenantId = user.TenantId,
             UserId = user.Id,
-            SettingId = setting.Id
-
+            SettingId = setting.Id,
+            Role = roles.FirstOrDefault() ?? nameof(AccessRole.Staff)
         };
 
         var token = await _jwtAuthentication.GenerateTokenAsync(generateToken);
@@ -278,8 +281,8 @@ public class UserAccountService(
         var options = new CookieOptions
         {
             HttpOnly = true,
-            Secure = true,
-            SameSite = SameSiteMode.None,
+            Secure = !_environment.IsDevelopment(),
+            SameSite = _environment.IsDevelopment() ? SameSiteMode.Lax : SameSiteMode.None,
             Expires = DateTimeOffset.UtcNow.AddDays(7),
             Path = "/",
         };
@@ -314,8 +317,8 @@ public class UserAccountService(
             var cookieOptions = new CookieOptions
             {
                 HttpOnly = true,
-                Secure = true,
-                SameSite = SameSiteMode.None,
+                Secure = !_environment.IsDevelopment(),
+                SameSite = _environment.IsDevelopment() ? SameSiteMode.Lax : SameSiteMode.None,
                 Path = "/"
             };
 
