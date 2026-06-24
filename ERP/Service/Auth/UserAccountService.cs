@@ -438,8 +438,8 @@ public class UserAccountService(
         try
         {
             // Step 1: Validate
-            if (!await _recaptchaService.VerifyAsync(request.RecaptchaToken))
-                return ResultDTO<bool>.Fail("Captcha verification failed.");
+            //if (!await _recaptchaService.VerifyAsync(request.RecaptchaToken))
+            //    return ResultDTO<bool>.Fail("Captcha verification failed.");
 
             if (await _userRepository.IsUserExistByEmailAsync(request.Email))
                 return ResultDTO<bool>.Fail("An account with this email already exists. Please sign in or reset your password.");
