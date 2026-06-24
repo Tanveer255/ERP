@@ -21,13 +21,13 @@ namespace ERP.Controllers.Order;
 public class SalesController : ControllerBase
 {
     private readonly ManufacturingDbContext _context;
-    private readonly ProductService _productService;
+    private readonly IProductService _productService;
     private readonly ILogger<SalesController> _logger;
     private readonly BillOfMaterialService _bomService;
     private readonly MrpService _mrpService;
 
     public SalesController(ManufacturingDbContext context,
-        ProductService productService,
+        IProductService productService,
         ILogger<SalesController> logger,
         BillOfMaterialService bomService,
         MrpService mrpService)
