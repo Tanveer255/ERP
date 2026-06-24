@@ -1,5 +1,6 @@
 ﻿using ERP.Entity.Order;
 using ERP.Entity.Product;
+using System.Text.Json.Serialization;
 
 namespace ERP.Entity.Document;
 
@@ -18,8 +19,10 @@ public class PurchaseOrderItem
 
     //  ADD THIS
     public Guid? SalesOrderItemId { get; set; }
+    [JsonIgnore]
     public SalesOrderItem SalesOrderItem { get; set; }
     // Navigation
+    [JsonIgnore]
     public PurchaseOrder PurchaseOrder { get; set; }
     public ProductEntity Product { get; set; }
     public Guid? ProductionOrderId { get; set; }

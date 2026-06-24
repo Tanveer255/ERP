@@ -69,7 +69,7 @@ public class SalesController : ControllerBase
                     i.UnitPrice,
                     i.TotalPrice,
                     i.Status
-                }).ToList()
+                })
             })
             .ToListAsync();
         return Ok(orders);

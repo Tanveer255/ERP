@@ -2,6 +2,7 @@ using ERP.Data;
 using ERP.Infrastructure.Authentication;
 using ERP.Infrastructure.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,7 +13,11 @@ builder.Services.AddErpServices(builder.Configuration);
 builder.Services.AddJwtCookieAuthentication(builder.Configuration);
 builder.Services.AddFrontendCors(builder.Configuration);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 

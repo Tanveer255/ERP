@@ -1,5 +1,6 @@
 ﻿using ERP.Entity.Order;
 using ERP.Entity.Product;
+using System.Text.Json.Serialization;
 
 namespace ERP.Entity.Document;
 
@@ -26,6 +27,7 @@ public class SalesOrderItem
     public ICollection<ProductionOrder> ProductionOrders { get; set; }
 
     // Navigation
+    [JsonIgnore]
     public SalesOrder SalesOrder { get; set; }
     public ProductEntity Product { get; set; }
     public DateTime? CreatedAt { get; set; }

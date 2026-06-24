@@ -74,7 +74,7 @@ public class PurchaseOrderController : ControllerBase
                     i.QuantityReceived,
                     i.UnitPrice,
                     i.TotalPrice
-                }).ToList()
+                })
             })
             .ToListAsync();
         return Ok(orders);
