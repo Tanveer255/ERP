@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD: erp_secret
+      POSTGRES_DB: erp_identity
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: erp
+      RABBITMQ_DEFAULT_PASS: erp_secret
+
+  identity-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.Identity
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__IdentityDb: Host=postgres;Port=5432;Database=erp_identity;Username=erp;Password=erp_secret
+      Jwt__SecretKey: EnterpriseDevSecretKey_ChangeInProduction_Min32Chars!
+    ports:
+      - "5101:8080"
+    depends_on:
+      - postgres
+      - redis
+      - rabbitmq
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.Gateway
+    ports:
+      - "5000:8080"
+    depends_on:
+      - identity-api
+
+volumes:
+  pgdata:

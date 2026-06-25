@@ -1,0 +1,34 @@
+name: Enterprise CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths: ['Enterprise/**']
+  pull_request:
+    branches: [main, develop]
+    paths: ['Enterprise/**']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Enterprise
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - run: dotnet restore Enterprise.sln
+      - run: dotnet build Enterprise.sln --configuration Release --no-restore
+      - run: dotnet test tests/Identity.UnitTests/Identity.UnitTests.csproj --configuration Release --no-build
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: build
+    defaults:
+      run:
+        working-directory: Enterprise/docker
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config
