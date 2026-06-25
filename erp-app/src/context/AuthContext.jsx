@@ -1,31 +1,51 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { ApiError } from '../api/client';
+import { ApiError, API_MODE, setAccessTokenGetter } from '../api/client';
 import * as authApi from '../api/auth';
+import { useAppDispatch } from '../store/hooks';
+import { clearAuth, setAccessToken, setUser } from '../store/features/auth/authSlice';
 
 const AuthContext = createContext(null);
+const TOKEN_KEY = 'erp_access_token';
 
 export function AuthProvider({ children }) {
-    const [user, setUser] = useState(null);
+    const dispatch = useAppDispatch();
+    const [user, setUserState] = useState(null);
+    const [accessToken, setAccessTokenState] = useState(
+        () => localStorage.getItem(TOKEN_KEY) ?? null
+    );
     const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        setAccessTokenGetter(() => accessToken);
+    }, [accessToken]);
+
+    const syncUser = useCallback(
+        (profile) => {
+            setUserState(profile);
+            dispatch(setUser(profile));
+        },
+        [dispatch]
+    );
 
     const refreshProfile = useCallback(async () => {
         try {
             const result = await authApi.getProfile();
             if (result?.succeeded ?? result?.Succeeded) {
-                setUser(result.data ?? result.Data);
+                const profile = result.data ?? result.Data;
+                syncUser(profile);
                 return true;
             }
-            setUser(null);
+            syncUser(null);
             return false;
         } catch (err) {
             if (err instanceof ApiError && err.status === 401) {
-                setUser(null);
+                syncUser(null);
                 return false;
             }
-            setUser(null);
+            syncUser(null);
             return false;
         }
-    }, []);
+    }, [syncUser]);
 
     useEffect(() => {
         refreshProfile().finally(() => setLoading(false));
@@ -37,6 +57,16 @@ export function AuthProvider({ children }) {
         if (!ok) {
             throw new Error(result?.message ?? result?.Message ?? 'Login failed');
         }
+
+        if (API_MODE === 'gateway') {
+            const token = result?.data?.accessToken ?? result?.Data?.accessToken ?? result?.accessToken;
+            if (token) {
+                setAccessTokenState(token);
+                localStorage.setItem(TOKEN_KEY, token);
+                dispatch(setAccessToken(token));
+            }
+        }
+
         await refreshProfile();
         return result;
     };
@@ -58,12 +88,15 @@ export function AuthProvider({ children }) {
                 // ignore logout errors
             }
         }
-        setUser(null);
+        setAccessTokenState(null);
+        localStorage.removeItem(TOKEN_KEY);
+        dispatch(clearAuth());
+        syncUser(null);
     };
 
     const value = useMemo(
-        () => ({ user, loading, login, signup, logout, refreshProfile, isAuthenticated: !!user }),
-        [user, loading, refreshProfile]
+        () => ({ user, loading, login, signup, logout, refreshProfile, isAuthenticated: !!user, accessToken }),
+        [user, loading, refreshProfile, accessToken]
     );
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

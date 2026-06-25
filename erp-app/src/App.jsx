@@ -11,6 +11,7 @@ import SalesPage from './pages/SalesPage';
 import ProductionPage from './pages/ProductionPage';
 import PurchaseOrdersPage from './pages/PurchaseOrdersPage';
 import SuppliersPage from './pages/SuppliersPage';
+import InventoryPage from './pages/InventoryPage';
 import BOMPage from './pages/BOMPage';
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
                         <Route element={<Layout />}>
                             <Route index element={<DashboardPage />} />
                             <Route path="products" element={<ProductsPage />} />
+                            <Route path="inventory" element={<InventoryPage />} />
                             <Route path="sales" element={<SalesPage />} />
                             <Route path="production" element={<ProductionPage />} />
                             <Route path="purchase-orders" element={<PurchaseOrdersPage />} />

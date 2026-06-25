@@ -1,5 +1,5 @@
-using FluentValidation.TestHelper;
 using Identity.Application.Auth.Commands;
+using Xunit;
 
 namespace Identity.UnitTests;
 
@@ -10,14 +10,15 @@ public class LoginCommandValidatorTests
     [Fact]
     public void Should_fail_when_email_empty()
     {
-        var result = _validator.TestValidate(new LoginCommand("", "Password123!"));
-        result.ShouldHaveValidationErrorFor(x => x.Email);
+        var result = _validator.Validate(new LoginCommand("", "Password123!"));
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName == nameof(LoginCommand.Email));
     }
 
     [Fact]
     public void Should_pass_with_valid_input()
     {
-        var result = _validator.TestValidate(new LoginCommand("user@example.com", "Password123!"));
-        result.ShouldNotHaveAnyValidationErrors();
+        var result = _validator.Validate(new LoginCommand("user@example.com", "Password123!"));
+        Assert.True(result.IsValid);
     }
 }

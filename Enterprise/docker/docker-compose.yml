@@ -39,6 +39,53 @@ services:
       - redis
       - rabbitmq
 
+  product-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.Product
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__ProductDb: Host=postgres;Port=5432;Database=erp_product;Username=erp;Password=erp_secret
+      Jwt__SecretKey: EnterpriseDevSecretKey_ChangeInProduction_Min32Chars!
+    ports:
+      - "5103:8080"
+    depends_on:
+      - postgres
+
+  inventory-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.Inventory
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__InventoryDb: Host=postgres;Port=5432;Database=erp_inventory;Username=erp;Password=erp_secret
+      Jwt__SecretKey: EnterpriseDevSecretKey_ChangeInProduction_Min32Chars!
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: erp
+      RabbitMq__Password: erp_secret
+    ports:
+      - "5104:8080"
+    depends_on:
+      - postgres
+      - rabbitmq
+
+  manufacturing-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.Manufacturing
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__ManufacturingDb: Host=postgres;Port=5432;Database=erp_manufacturing;Username=erp;Password=erp_secret
+      Jwt__SecretKey: EnterpriseDevSecretKey_ChangeInProduction_Min32Chars!
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Username: erp
+      RabbitMq__Password: erp_secret
+    ports:
+      - "5107:8080"
+    depends_on:
+      - postgres
+      - rabbitmq
+
   gateway:
     build:
       context: ..
@@ -47,6 +94,9 @@ services:
       - "5000:8080"
     depends_on:
       - identity-api
+      - product-api
+      - inventory-api
+      - manufacturing-api
 
 volumes:
   pgdata:

@@ -1,32 +1,29 @@
 # ERP
 
-Manufacturing ERP with an ASP.NET Core 8 API and a React frontend.
+Manufacturing ERP with an ASP.NET Core 8 monolith API, an optional Enterprise microservices stack, and a shared React frontend.
 
 ## Stack
 
-- **Backend:** ASP.NET Core 8, EF Core, SQL Server, JWT + HttpOnly cookie auth
-- **Frontend:** React 19, Vite
+- **Monolith backend:** ASP.NET Core 8, EF Core, SQL Server, JWT + HttpOnly cookie auth
+- **Enterprise backend:** ASP.NET Core 9 microservices, PostgreSQL, RabbitMQ, YARP gateway (see `Enterprise/`)
+- **Frontend:** `erp-app` — React 19, Vite, Tailwind v4, Redux Toolkit, React Router
 - **Infrastructure:** Docker Compose, GitHub Actions CI
 
-## Local development
+## Local development (monolith + erp-app)
 
 ### Prerequisites
 
 - .NET 8 SDK
 - Node.js 22+
-- SQL Server (local or Docker)
+- SQL Server (LocalDB or Docker)
 
 ### Backend
 
-1. Copy `ERP/appsettings.example.json` to `ERP/appsettings.json` and update secrets.
-2. Or use the defaults in `ERP/appsettings.Development.json` with Docker SQL Server.
-3. Run the API:
-
 ```bash
-dotnet run --project ERP/ERP.csproj
+dotnet run --project ERP/ERP.csproj --launch-profile https
 ```
 
-Swagger: `http://localhost:5254/swagger`
+Swagger: `https://localhost:7013/swagger`
 
 ### Frontend
 
@@ -37,37 +34,43 @@ cp .env.example .env
 npm run dev
 ```
 
-App: `http://localhost:61104` — API requests to `/api` are proxied to the backend.
+App: `http://localhost:61104` — API requests to `/api` are proxied to the monolith.
+
+## Enterprise microservices (optional)
+
+See [Enterprise/README.md](Enterprise/README.md). Point `erp-app` at the gateway:
+
+```env
+VITE_API_PROXY_TARGET=http://localhost:5000
+VITE_API_MODE=gateway
+```
 
 ## Docker
 
-Start SQL Server, API, and frontend together:
+Monolith stack:
 
 ```bash
 docker compose up --build
 ```
 
-| Service   | URL                      |
-|-----------|--------------------------|
-| Frontend  | http://localhost:61104   |
-| API       | http://localhost:5254    |
-| SQL Server| localhost:1433           |
+Enterprise infrastructure:
+
+```bash
+cd Enterprise/docker && docker compose up -d
+```
 
 ## Authentication
 
-- Login sets an HttpOnly `AuthToken` cookie (JWT).
-- Protected endpoints require authentication by default.
-- Public auth routes (`Login`, `Signup`, etc.) are marked `[AllowAnonymous]`.
-- JWT is also accepted via `Authorization: Bearer` header.
+- **Monolith:** HttpOnly `AuthToken` cookie (JWT) via `/api/Users/*`
+- **Gateway:** JWT Bearer from Identity service at `/api/v1/auth/*`
 
 ## Configuration
 
 | Setting | Description |
 |---------|-------------|
-| `ConnectionStrings:DefaultConnection` | SQL Server connection |
+| `ConnectionStrings:DefaultConnection` | SQL Server connection (monolith) |
 | `JwtSettings` | JWT signing and expiry |
-| `FrontendUrl` | CORS origin for the React app |
-| `SendGridSettings` | Email delivery |
-| `ReCaptchaSettings` | Login/signup CAPTCHA |
+| `VITE_API_MODE` | `monolith` (default) or `gateway` |
+| `VITE_API_PROXY_TARGET` | Backend URL for Vite dev proxy |
 
 See `ERP/appsettings.example.json` and `erp-app/.env.example` for templates.

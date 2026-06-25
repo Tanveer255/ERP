@@ -1,4 +1,11 @@
 const API_BASE = import.meta.env.VITE_API_URL || '';
+export const API_MODE = import.meta.env.VITE_API_MODE || 'monolith';
+
+let accessTokenGetter = () => null;
+
+export function setAccessTokenGetter(getter) {
+    accessTokenGetter = getter;
+}
 
 export class ApiError extends Error {
     constructor(message, status, body) {
@@ -9,11 +16,16 @@ export class ApiError extends Error {
 }
 
 export async function apiRequest(path, { method = 'GET', body, headers = {} } = {}) {
+    const token = accessTokenGetter();
+    const authHeaders =
+        API_MODE === 'gateway' && token ? { Authorization: `Bearer ${token}` } : {};
+
     const response = await fetch(`${API_BASE}${path}`, {
         method,
-        credentials: 'include',
+        credentials: API_MODE === 'gateway' ? 'omit' : 'include',
         headers: {
             ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+            ...authHeaders,
             ...headers,
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
