@@ -14,4 +14,9 @@ npm install
 npm run dev
 ```
 
-The duplicate scaffold in `erp-dashboard/` has been removed. Use `erp-app` for all UI work.
+For Enterprise microservices, set gateway mode in `.env`:
+
+```env
+VITE_API_PROXY_TARGET=http://localhost:5000
+VITE_API_MODE=gateway
+```

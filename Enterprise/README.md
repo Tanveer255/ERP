@@ -20,7 +20,7 @@ dotnet run --project src/Services/Inventory/Inventory.API
 dotnet run --project src/Services/Manufacturing/Manufacturing.API
 
 # API Gateway
-dotnet run --project src/Gateway/Erp.Gateway
+dotnet run --project src/Gateway/Erp.Gateway   # Ocelot :5000
 ```
 
 ### Frontend (`erp-app`)

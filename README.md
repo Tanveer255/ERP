@@ -5,7 +5,7 @@ Manufacturing ERP with an ASP.NET Core 8 monolith API, an optional Enterprise mi
 ## Stack
 
 - **Monolith backend:** ASP.NET Core 8, EF Core, SQL Server, JWT + HttpOnly cookie auth
-- **Enterprise backend:** ASP.NET Core 9 microservices, PostgreSQL, RabbitMQ, YARP gateway (see `Enterprise/`)
+- **Enterprise backend:** ASP.NET Core 9 microservices, PostgreSQL, RabbitMQ, Ocelot gateway (see `Enterprise/`)
 - **Frontend:** `erp-app` — React 19, Vite, Tailwind v4, Redux Toolkit, React Router
 - **Infrastructure:** Docker Compose, GitHub Actions CI
 

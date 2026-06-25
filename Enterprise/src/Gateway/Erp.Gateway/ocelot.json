@@ -1,0 +1,103 @@
+{
+  "Routes": [
+    {
+      "Key": "identity",
+      "DownstreamPathTemplate": "/api/v1/auth/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [{ "Host": "identity-api", "Port": 8080 }],
+      "UpstreamPathTemplate": "/api/v1/auth/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    },
+    {
+      "Key": "organization",
+      "DownstreamPathTemplate": "/api/v1/organization/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [{ "Host": "organization-api", "Port": 8080 }],
+      "UpstreamPathTemplate": "/api/v1/organization/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    },
+    {
+      "Key": "products",
+      "DownstreamPathTemplate": "/api/v1/products/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [{ "Host": "product-api", "Port": 8080 }],
+      "UpstreamPathTemplate": "/api/v1/products/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    },
+    {
+      "Key": "inventory",
+      "DownstreamPathTemplate": "/api/v1/inventory/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [{ "Host": "inventory-api", "Port": 8080 }],
+      "UpstreamPathTemplate": "/api/v1/inventory/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    },
+    {
+      "Key": "procurement",
+      "DownstreamPathTemplate": "/api/v1/procurement/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [{ "Host": "procurement-api", "Port": 8080 }],
+      "UpstreamPathTemplate": "/api/v1/procurement/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    },
+    {
+      "Key": "sales",
+      "DownstreamPathTemplate": "/api/v1/sales/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [{ "Host": "sales-api", "Port": 8080 }],
+      "UpstreamPathTemplate": "/api/v1/sales/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    },
+    {
+      "Key": "manufacturing",
+      "DownstreamPathTemplate": "/api/v1/manufacturing/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [{ "Host": "manufacturing-api", "Port": 8080 }],
+      "UpstreamPathTemplate": "/api/v1/manufacturing/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    },
+    {
+      "Key": "quality",
+      "DownstreamPathTemplate": "/api/v1/quality/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [{ "Host": "quality-api", "Port": 8080 }],
+      "UpstreamPathTemplate": "/api/v1/quality/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    },
+    {
+      "Key": "maintenance",
+      "DownstreamPathTemplate": "/api/v1/maintenance/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [{ "Host": "maintenance-api", "Port": 8080 }],
+      "UpstreamPathTemplate": "/api/v1/maintenance/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    },
+    {
+      "Key": "hr",
+      "DownstreamPathTemplate": "/api/v1/hr/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [{ "Host": "hr-api", "Port": 8080 }],
+      "UpstreamPathTemplate": "/api/v1/hr/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    },
+    {
+      "Key": "finance",
+      "DownstreamPathTemplate": "/api/v1/finance/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [{ "Host": "finance-api", "Port": 8080 }],
+      "UpstreamPathTemplate": "/api/v1/finance/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    },
+    {
+      "Key": "reporting",
+      "DownstreamPathTemplate": "/api/v1/reporting/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [{ "Host": "reporting-api", "Port": 8080 }],
+      "UpstreamPathTemplate": "/api/v1/reporting/{everything}",
+      "UpstreamHttpMethod": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    }
+  ],
+  "GlobalConfiguration": {
+    "BaseUrl": "http://localhost:5000"
+  }
+}

@@ -2,16 +2,41 @@
 
 Enterprise-grade microservices ERP aligned with SAP PP/MM, Oracle SCM, Dynamics 365 Supply Chain, and Odoo Manufacturing patterns.
 
+## Architecture Principles
+
+| Pattern | Role in this solution |
+|---------|------------------------|
+| **Microservices Architecture** | 12 bounded-context services (Identity, Product, Inventory, Sales, etc.), each with its own PostgreSQL database, Clean Architecture layers, and independent deployability behind **Ocelot API Gateway**. |
+| **Event-Driven Architecture** | Domain changes propagate asynchronously via **RabbitMQ + MassTransit** integration events (`BuildingBlocks.EventBus`). Services publish facts; consumers react without tight coupling. |
+| **Saga Pattern** | Long-running distributed workflows (Order-to-Cash, Procure-to-Pay, MRP) use **choreography-based sagas**: each service listens for events, performs local transactions, and publishes compensating or forward events (see section 7). |
+
+```mermaid
+flowchart LR
+    subgraph Sync["Synchronous (Ocelot Gateway)"]
+        UI[erp-app] --> GW[Ocelot Gateway]
+        GW --> SVC[Microservices REST APIs]
+    end
+    subgraph Async["Asynchronous (Event Bus)"]
+        SVC --> MQ[(RabbitMQ)]
+        MQ --> SVC
+    end
+    subgraph Saga["Distributed Transactions (Saga)"]
+        MQ -.->|SalesOrderCreated| MFG[Manufacturing]
+        MFG -.->|ProductionOrderPlanned| INV[Inventory]
+        INV -.->|StockAdjusted| SAL[Sales]
+    end
+```
+
 ## 1. Solution Folder Structure
 
 ```
 Enterprise/
 ├── docs/architecture/          # Architecture artifacts (this folder)
 ├── docker/                     # Docker Compose, Dockerfiles
-├── frontend/erp-dashboard/     # React + TypeScript + Redux + Tailwind
+├── frontend/                   # Points to repo-root erp-app (canonical UI)
 ├── src/
 │   ├── BuildingBlocks/         # Shared domain, application, infrastructure, event bus
-│   ├── Gateway/                # YARP API Gateway
+│   ├── Gateway/                # Ocelot API Gateway
 │   └── Services/
 │       ├── Identity.*          # Auth, users, roles, permissions, refresh tokens
 │       ├── Organization.*      # Companies, plants, warehouses, departments
@@ -94,7 +119,7 @@ erDiagram
 
 ```mermaid
 flowchart TB
-    UI[React Dashboard] --> GW[API Gateway YARP]
+    UI[erp-app React SPA] --> GW[API Gateway Ocelot]
     GW --> ID[Identity Service]
     GW --> ORG[Organization Service]
     GW --> PRD[Product Service]
@@ -214,7 +239,7 @@ sequenceDiagram
 | Transport | TLS 1.2+, mTLS between services (production) |
 | Secrets | Azure Key Vault / HashiCorp Vault |
 | Audit | Serilog structured logs + immutable audit trail per service |
-| API Gateway | Rate limiting, JWT validation, tenant routing |
+| API Gateway | Ocelot routing, rate limiting (extensible), JWT passthrough, tenant headers |
 
 ---
 
@@ -276,7 +301,7 @@ dotnet ef migrations add InitialCreate --project src/Services/Identity.Infrastru
 dotnet run --project src/Services/Identity.API
 ```
 
-Gateway: `dotnet run --project src/Gateway/Erp.Gateway`
+Gateway: `dotnet run --project src/Gateway/Erp.Gateway` (Ocelot on `http://localhost:5000`)
 
 ---
 
