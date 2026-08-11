@@ -737,7 +737,11 @@ public class UserAccountRepository(
     {
         return UpdateLastActivityAsync(u => u.TenantId == tenantId);
     }
-
+    /// <summary>
+    /// UpdateLastActivityByIdAsync
+    /// </summary>
+    /// <param name="id"></param>
+    /// <returns></returns>
     public Task<bool> UpdateLastActivityByIdAsync(Guid id)
     {
         return UpdateLastActivityAsync(u => u.Id == id);
