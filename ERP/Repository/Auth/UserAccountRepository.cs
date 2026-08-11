@@ -728,7 +728,11 @@ public class UserAccountRepository(
             PostalZipCode = x.address.PostalZipCode
         }).FirstOrDefaultAsync();
     }
-
+    /// <summary>
+    /// UpdateLastActivityByTenantIdAsync
+    /// </summary>
+    /// <param name="tenantId"></param>
+    /// <returns></returns>
     public Task<bool> UpdateLastActivityByTenantIdAsync(string tenantId)
     {
         return UpdateLastActivityAsync(u => u.TenantId == tenantId);
