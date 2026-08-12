@@ -126,6 +126,11 @@ public interface IUserAccountRepository : IRepository<User>
     /// The task result contains a <see cref="GetUserDetailsForEmailDTO"/> object with the user's details, 
     /// or null if no user is found for the given tenant ID.</returns>
     Task<UserDetailsForEmailDTO> GetUserDetailsForEmailByTenantIdAsync(string tenantId);
+    /// <summary>
+    /// Update Last Activity By TenantId Async
+    /// </summary>
+    /// <param name="tenantId"></param>
+    /// <returns></returns>
     Task<bool> UpdateLastActivityByTenantIdAsync(string tenantId);
     Task<bool> UpdateLastActivityByIdAsync(Guid id);
     Task<bool> UpdateLastActivityByEmailAsync(string email);
