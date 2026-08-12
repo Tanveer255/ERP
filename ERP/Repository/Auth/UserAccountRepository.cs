@@ -755,6 +755,11 @@ public class UserAccountRepository(
     {
         return UpdateLastActivityAsync(u => u.Email == email);
     }
+    /// <summary>
+    /// UpdateLastActivityAsync
+    /// </summary>
+    /// <param name="predicate"></param>
+    /// <returns></returns>
 
     private async Task<bool> UpdateLastActivityAsync(Func<User, bool> predicate)
     {
