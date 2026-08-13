@@ -40,7 +40,10 @@ public class ProductionController : ControllerBase
         _mrpService = mrpService;
         _productStockService = productStockService;
     }
-
+    /// <summary>
+    /// GetProductionOrders
+    /// </summary>
+    /// <returns></returns>
     [HttpGet]
     public async Task<IActionResult> GetProductionOrders()
     {
