@@ -16,7 +16,10 @@ public class BOMController : ControllerBase
     {
         _context = context;
     }
-
+    /// <summary>
+    /// GetBOMs
+    /// </summary>
+    /// <returns></returns>
     [HttpGet]
     public async Task<IActionResult> GetBOMs()
     {
