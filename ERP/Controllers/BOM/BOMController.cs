@@ -42,7 +42,11 @@ public class BOMController : ControllerBase
             .ToListAsync();
         return Ok(boms);
     }
-
+    /// <summary>
+    /// create-bom
+    /// </summary>
+    /// <param name="dto"></param>
+    /// <returns></returns>
     [HttpPost("create-bom")]
     public async Task<IActionResult> CreateBOM(CreateBOMDto dto)
     {
