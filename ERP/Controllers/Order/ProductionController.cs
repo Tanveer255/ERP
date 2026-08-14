@@ -278,6 +278,11 @@ public class ProductionController : ControllerBase
     #endregion
 
     #region Complete Production
+    /// <summary>
+    /// Complete production added
+    /// </summary>
+    /// <param name="orderId"></param>
+    /// <returns></returns>
     [HttpPost("complete-production")]
     public async Task<IActionResult> CompleteProduction(Guid orderId)
     {
