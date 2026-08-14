@@ -258,6 +258,11 @@ public class ProductionController : ControllerBase
 
 
     #region Advance Production
+    /// <summary>
+    /// Advance production
+    /// </summary>
+    /// <param name="orderId"></param>
+    /// <returns></returns>
     [HttpPost("advance-production")]
     public async Task<IActionResult> AdvanceProduction(Guid orderId)
     {
