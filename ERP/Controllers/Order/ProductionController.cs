@@ -279,7 +279,7 @@ public class ProductionController : ControllerBase
 
     #region Complete Production
     /// <summary>
-    /// Complete production added: consume reserved stock, produce finished goods, update order status to Completed, handle concurrency with transaction
+    /// Complete production added logic: consume reserved stock, produce finished goods, update order status to Completed, handle concurrency with transaction
     /// </summary>
     /// <param name="orderId"></param>
     /// <returns></returns>
