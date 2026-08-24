@@ -41,7 +41,7 @@ public class ProductionController : ControllerBase
         _productStockService = productStockService;
     }
     /// <summary>
-    /// GetProductionOrders
+    /// get production on order
     /// </summary>
     /// <returns></returns>
     [HttpGet]
