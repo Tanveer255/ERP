@@ -126,7 +126,7 @@ public class ProductionController : ControllerBase
     /// </summary>
     /// <param name="orderId"></param>
     /// <returns></returns>
-    [HttpPost("prepare-production")]
+    [HttpPost("repare-production")]
     public async Task<IActionResult> PrepareProduction(Guid orderId)
     {
         var order = await _context.ProductionOrders.FindAsync(orderId);
