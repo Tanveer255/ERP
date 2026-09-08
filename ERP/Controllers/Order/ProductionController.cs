@@ -23,6 +23,7 @@ public class ProductionController : ControllerBase
     private readonly PurchaseOrderService _purchaseOrderService;
     private readonly ProductionOperationService _productionOperationService;
     private readonly MrpService _mrpService;
+    private readonly ProductStockService _productStockService;
 
     public ProductionController(ManufacturingDbContext context,
         ProductionOrderService productionOrderService,
