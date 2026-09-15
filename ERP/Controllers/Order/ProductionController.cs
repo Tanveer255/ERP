@@ -259,7 +259,7 @@ public class ProductionController : ControllerBase
 
     #region Advance Production
     /// <summary>
-    ///  complete current operation, start next operation, return current and next operation names
+    /// Advance production order: complete current operation, start next operation, return current and next operation names
     /// </summary>
     /// <param name="orderId"></param>
     /// <returns></returns>
