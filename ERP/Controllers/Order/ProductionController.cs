@@ -29,7 +29,7 @@ public class ProductionController : ControllerBase
         ProductionOrderService productionOrderService,
         PurchaseOrderService purchaseOrderService,
         ProductionOperationService productionOperationService,
-        MrpService mrpService,
+        MrpService mrpService
         )
     {
         _context = context;
