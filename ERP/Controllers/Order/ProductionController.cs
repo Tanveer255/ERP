@@ -302,7 +302,7 @@ public class ProductionController : ControllerBase
             // ======================================
             foreach (var item in bomItems)
             {
-                var ty = item.Quantity * order.PlannedQuantity;
+                var qty = item.Quantity * order.PlannedQuantity;
 
                 var success = await _purchaseOrderService.AdjustStock(
                     order.Id,
