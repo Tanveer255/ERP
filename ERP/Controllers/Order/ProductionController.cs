@@ -291,7 +291,7 @@ public class ProductionController : ControllerBase
         try
         {
             var order = await _context.ProductionOrders.FindAsync(orderId);
-            if (order == null) return NotFound();
+            if (order== null) return NotFound();
 
             var bomItems = await _context.BillOfMaterialItems
                 .Where(x => x.BillOfMaterialId == order.BillOfMaterialId)
