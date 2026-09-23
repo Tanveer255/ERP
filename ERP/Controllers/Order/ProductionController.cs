@@ -284,7 +284,7 @@ public class ProductionController : ControllerBase
     /// <param name="orderId"></param>
     /// <returns></returns>
     [HttpPost("complete-production")]
-    public async Task<IActionResult> CompletProduction(Guid orderId)
+    public async Task<IActionResult> CompleteProduction(Guid orderId)
     {
         using var transaction = await _context.Database.BeginTransactionAsync();
 
