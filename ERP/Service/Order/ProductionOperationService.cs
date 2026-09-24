@@ -12,7 +12,7 @@ public class ProductionOperationService
        _context = manufacturingDbContext;
     }
     /// <summary>
-    /// defaulf operations added
+    /// AddDefaultOperations added like Cutting, Assembly and packging
     /// </summary>
     /// <param name="orderId"></param>
     public void AddDefaultOperations(Guid orderId)
