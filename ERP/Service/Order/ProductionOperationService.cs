@@ -11,6 +11,10 @@ public class ProductionOperationService
     {
        _context = manufacturingDbContext;
     }
+    /// <summary>
+    /// defaulf operations added
+    /// </summary>
+    /// <param name="orderId"></param>
     public void AddDefaultOperations(Guid orderId)
     {
         _context.ProductionOperations.AddRange(new List<ProductionOperation>
