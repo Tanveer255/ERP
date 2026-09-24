@@ -42,6 +42,28 @@ public class BOMController : ControllerBase
             .ToListAsync();
         return Ok(boms);
     }
+    [HttpGet]
+    public async Task<IActionResult> GetAllBOMs()
+    {
+        var boms = await _context.BillOfMaterials
+            .Include(b => b.Items)
+            .Include(b => b.Product)
+            .Select(b => new
+            {
+                b.Id,
+                b.ProductId,
+                ProductName = b.Product.Name,
+                Items = b.Items.Select(i => new
+                {
+                    i.Id,
+                    i.ComponentId,
+                    i.Quantity,
+                    i.Unit
+                }).ToList()
+            })
+            .ToListAsync();
+        return Ok(boms);
+    }
     /// <summary>
     /// create-bom
     /// </summary>
